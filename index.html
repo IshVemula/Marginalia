@@ -319,13 +319,36 @@
     .defn { grid-template-columns: 1fr; gap: 0; }
     .defn dt { padding-top: 12px; }
   }
+
+  /* ---------- sign-in + sync ---------- */
+  [hidden] { display: none !important; }
+  .brand-right { display: flex; align-items: baseline; gap: 18px; }
+  .sync { font-family: var(--font-mono); font-size: 11px; color: var(--faint); }
+  .sync.error { color: var(--overdue); }
+  .signout { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; cursor: pointer; padding: 0; }
+  .signout:hover { color: var(--ink); text-decoration: underline; }
+
+  .auth-wrap { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+  .auth-card { width: 100%; max-width: 360px; }
+  .auth-card .wordmark { font-size: 30px; margin-bottom: 6px; }
+  .auth-sub { color: var(--muted); font-size: 13.5px; margin: 0 0 24px; }
+  .auth-card .btn-primary { width: 100%; margin-top: 4px; padding: 11px 20px; }
+  .auth-card .btn-primary[disabled] { opacity: .6; cursor: default; }
+  .auth-err { color: var(--overdue); font-size: 13px; min-height: 1.5em; margin: 0 0 8px; }
+  .auth-note { color: var(--muted); font-size: 14px; line-height: 1.6; margin: 0 0 14px; }
+  .auth-note code { font-family: var(--font-mono); font-size: 12.5px; background: var(--sink); padding: 1px 5px; border-radius: 3px; }
 </style>
 </head>
 <body>
-<div class="app">
+<div id="authRoot"></div>
+<div class="app" id="appRoot" hidden>
   <header class="brand">
     <div class="wordmark">Marginalia<span class="dot">.</span></div>
-    <div class="today-date" id="todayDate"></div>
+    <div class="brand-right">
+      <span class="sync" id="syncStatus" role="status"></span>
+      <div class="today-date" id="todayDate"></div>
+      <button class="signout" id="signOut" type="button">Sign out</button>
+    </div>
   </header>
   <div class="shell">
     <nav class="nav" id="nav" aria-label="Areas"></nav>
@@ -334,6 +357,10 @@
 </div>
 <div id="modalRoot"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"
+        integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o"
+        crossorigin="anonymous"></script>
+<script src="config.js"></script>
 <script>
 "use strict";
 
@@ -548,19 +575,90 @@ function person(n, o, r, h, lc, nf, notes, tasks){
 }
 
 /* ============ state ============ */
-var KEY = "marginalia.v2";
-var state;
-function load(){
-  try {
-    var raw = localStorage.getItem(KEY);
-    if (!raw) return seed();
-    var p = JSON.parse(raw);
-    if (!p || !p.academics || !p.people) return seed();
-    if (!p.ui) p.ui = { route: { k: "today" } };
-    return p;
-  } catch (e) { return seed(); }
+/* Data lives in Supabase (one row, owner-only via row-level security). Only the
+   current page is remembered in the browser; nothing personal is cached locally. */
+var LEGACY_KEY = "marginalia.v2";      // old browser-only storage, migrated once on first sign-in
+var ROUTE_KEY = "marginalia.route";
+var state = null;                       // null until signed in and loaded
+var sb = null;                          // Supabase client
+var userId = null;
+var lastSaved = "";                     // data last confirmed in the cloud
+var queued = "";                        // data waiting to upload
+var saveTimer = null;
+var inflight = false;
+
+function dataOnly(s){ var c = {}; for (var k in s) if (k !== "ui") c[k] = s[k]; return c; }
+function validState(p){
+  return !!(p && p.academics && Array.isArray(p.academics.subjects) && p.lifeadmin && p.career &&
+            Array.isArray(p.people) && p.personal);
 }
-function save(){ try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+function readRoute(){
+  try { var r = JSON.parse(localStorage.getItem(ROUTE_KEY)); if (r && r.k) return r; } catch (e) {}
+  return { k: "today" };
+}
+
+function setSync(s){
+  var n = document.getElementById("syncStatus");
+  if (!n) return;
+  n.className = "sync" + (s === "error" ? " error" : "");
+  n.textContent = ({ saved: "Saved", saving: "Saving…", error: "Offline — retrying" })[s] || "";
+}
+
+function save(){
+  if (!state) return;
+  try { localStorage.setItem(ROUTE_KEY, JSON.stringify(state.ui.route)); } catch (e) {}
+  var s = JSON.stringify(dataOnly(state));
+  if (s === lastSaved || s === queued) return;       // nothing new (navigation alone doesn't upload)
+  queued = s;
+  setSync("saving");
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(flush, 700);
+}
+
+function flush(){
+  clearTimeout(saveTimer);
+  if (inflight || !sb || !userId || !queued || queued === lastSaved) return Promise.resolve();
+  inflight = true;
+  var payload = queued;
+  return sb.from("app_state")
+    .upsert({ user_id: userId, data: JSON.parse(payload), updated_at: new Date().toISOString() })
+    .then(function (res){
+      if (res.error) throw res.error;
+      lastSaved = payload;
+      try { localStorage.removeItem(LEGACY_KEY); } catch (e) {}
+    })
+    .then(function (){
+      inflight = false;
+      if (queued === payload) queued = "";
+      if (queued && queued !== lastSaved){ setSync("saving"); saveTimer = setTimeout(flush, 0); }
+      else setSync("saved");
+    })
+    .catch(function (){
+      inflight = false;
+      setSync("error");
+      saveTimer = setTimeout(flush, 5000);
+    });
+}
+document.addEventListener("visibilitychange", function (){
+  if (document.visibilityState === "hidden") flush();
+});
+
+/* Never writes unless the read succeeded, so a failed load can't overwrite saved data. */
+function loadRemote(){
+  return sb.from("app_state").select("data").eq("user_id", userId).maybeSingle().then(function (res){
+    if (res.error) throw res.error;
+    if (res.data){
+      if (!validState(res.data.data)) throw new Error("Saved data looks unreadable, so nothing was changed.");
+      lastSaved = JSON.stringify(res.data.data);
+      return res.data.data;
+    }
+    // First sign-in: nothing saved yet. Carry over this browser's old data if any, else start with examples.
+    var local = null;
+    try { local = JSON.parse(localStorage.getItem(LEGACY_KEY) || "null"); } catch (e) {}
+    return dataOnly(validState(local) ? local : seed());
+  });
+}
+
 function mutate(fn){ fn(); save(); render(); }
 function go(route){ state.ui.route = route; save(); render(); window.scrollTo(0, 0); }
 
@@ -1384,9 +1482,113 @@ function warn(){
   if (m){ m.style.color = "var(--overdue)"; m.textContent = "Add a name or title first"; }
 }
 
+/* ============ sign-in ============ */
+var appRoot = document.getElementById("appRoot");
+var authRoot = document.getElementById("authRoot");
+
+function showScreen(card){
+  appRoot.hidden = true;
+  closeAdd();
+  authRoot.innerHTML = "";
+  authRoot.appendChild(el("div", { class: "auth-wrap" }, card));
+}
+function brandBlock(sub){
+  return [
+    el("div", { class: "wordmark" }, "Marginalia", el("span", { class: "dot", text: "." })),
+    el("p", { class: "auth-sub", text: sub })
+  ];
+}
+
+function showLogin(msg){
+  var email = el("input", { class: "inp", type: "email", autocomplete: "username", required: "required", "aria-label": "Email" });
+  var pass = el("input", { class: "inp", type: "password", autocomplete: "current-password", required: "required", "aria-label": "Password" });
+  var err = el("p", { class: "auth-err", role: "alert", text: msg || "" });
+  var btn = el("button", { class: "btn-primary", type: "submit", text: "Sign in" });
+  var form = el("form", { class: "auth-card", onsubmit: function (e){
+    e.preventDefault();
+    btn.disabled = true; btn.textContent = "Signing in…"; err.textContent = "";
+    sb.auth.signInWithPassword({ email: email.value.trim(), password: pass.value }).then(function (res){
+      if (res.error){
+        var bad = res.error.status === 400 || /invalid/i.test(res.error.message || "");
+        throw new Error(bad ? "That email or password isn't right." : (res.error.message || "Couldn't sign in. Try again."));
+      }
+      pass.value = "";
+      enter(res.data.user);
+    }).catch(function (ex){
+      err.textContent = ex.message;
+      btn.disabled = false; btn.textContent = "Sign in";
+      pass.focus(); pass.select();
+    });
+  } },
+    brandBlock("Sign in to continue."),
+    el("div", { class: "form-row" }, el("label", { text: "Email" }), email),
+    el("div", { class: "form-row" }, el("label", { text: "Password" }), pass),
+    err, btn);
+  showScreen(form);
+  email.focus();
+}
+
+function showSetup(){
+  showScreen(el("div", { class: "auth-card" },
+    brandBlock("One-time setup needed."),
+    el("p", { class: "auth-note" }, "Add your Supabase project URL and anon key to ", el("code", { text: "config.js" }),
+      ", then redeploy. Steps are in the README.")));
+}
+
+function showFatal(message){
+  showScreen(el("div", { class: "auth-card" },
+    brandBlock("Couldn't open your data."),
+    el("p", { class: "auth-err", role: "alert", text: message }),
+    el("button", { class: "btn-primary", type: "button", text: "Try again", onclick: function (){
+      if (userId) enter({ id: userId }); else boot();
+    } }),
+    el("button", { class: "btn-ghost", type: "button", style: { marginTop: "10px" }, text: "Sign out", onclick: signOut })));
+}
+
+function enter(user){
+  userId = user.id;
+  loadRemote().then(function (d){
+    d.ui = { route: readRoute() };
+    state = d;
+    authRoot.innerHTML = "";
+    appRoot.hidden = false;
+    render();
+    setSync("saved");
+  }).catch(function (ex){
+    state = null;
+    showFatal((ex && ex.message) || "Check your connection and try again.");
+  });
+}
+
+function signOut(){
+  flush().then(function (){ return sb.auth.signOut(); });
+}
+
+function leave(){
+  clearTimeout(saveTimer);
+  state = null; userId = null; lastSaved = ""; queued = ""; inflight = false;
+  try { localStorage.removeItem(LEGACY_KEY); } catch (e) {}
+  showLogin();
+}
+
+function boot(){
+  var cfg = window.MARGINALIA_CONFIG || {};
+  if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || /YOUR[-_]/i.test(cfg.supabaseUrl + cfg.supabaseAnonKey)) return showSetup();
+  if (!window.supabase) return showFatal("The sign-in library didn't load. Check your connection and reload.");
+  if (!sb){
+    sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { persistSession: true, autoRefreshToken: true } });
+    // Keep this callback synchronous: calling Supabase from inside it can deadlock.
+    sb.auth.onAuthStateChange(function (event){ if (event === "SIGNED_OUT") leave(); });
+  }
+  sb.auth.getSession().then(function (r){
+    if (r.data && r.data.session) enter(r.data.session.user); else showLogin();
+  }).catch(function (){ showLogin(); });
+}
+
+document.getElementById("signOut").addEventListener("click", signOut);
+
 /* ============ go ============ */
-state = load();
-render();
+boot();
 </script>
 </body>
 </html>
