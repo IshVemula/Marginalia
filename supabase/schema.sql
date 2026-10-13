@@ -14,6 +14,11 @@ alter table public.app_state enable row level security;
 
 revoke all on public.app_state from anon;
 
+-- Newer Supabase projects don't grant new tables to the API roles automatically,
+-- so signed-in users need an explicit grant. (Row-level security below still limits
+-- each user to their own row.)
+grant select, insert, update on public.app_state to authenticated;
+
 create policy "owner can read"
   on public.app_state for select to authenticated
   using ((select auth.uid()) = user_id);
