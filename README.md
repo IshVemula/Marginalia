@@ -18,6 +18,15 @@ Five areas, each with its own model:
 
 Plus **Today**, **Upcoming**, and a single typed **+ Add** flow.
 
+## Editing
+
+- Hover a row (or just look, on a phone) and click **Edit**, or click its text, to change any
+  field: dates, times, status, amounts, links, notes, categories.
+- Academics: add subjects from the page or **+ Add -> Academic -> New subject**; **Edit subject**
+  renames, recolors, or deletes one; the semester name has its own **Edit**.
+- **+ Add a deadline / milestone / bill / document / application** links sit under each list.
+- **Start fresh** (bottom of the sidebar) clears the example data after a confirmation.
+
 ## How access works
 
 - Visitors see only a sign-in screen. There is no public view and no sign-up button.

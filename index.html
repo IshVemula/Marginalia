@@ -313,7 +313,7 @@
     .app { padding: 30px 18px 90px; }
     .shell { grid-template-columns: 1fr; gap: 24px; }
     .nav { position: static; flex-direction: row; flex-wrap: wrap; gap: 6px; }
-    .nav-label, .nav-gap { display: none; }
+    .nav-label, .nav-gap, .fresh { display: none; }
     .nav-link { width: auto; }
     .add-open { margin-top: 4px; }
     .defn { grid-template-columns: 1fr; gap: 0; }
@@ -327,6 +327,18 @@
   .sync.error { color: var(--overdue); }
   .signout { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; cursor: pointer; padding: 0; }
   .signout:hover { color: var(--ink); text-decoration: underline; }
+  .edit { border: 0; background: transparent; color: var(--faint); font: inherit; font-size: 12px; padding: 2px 7px; cursor: pointer; border-radius: 5px; opacity: 0; flex: none; transition: opacity .12s ease, color .12s ease; }
+  .row:hover .edit, .milestone:hover .edit, .milestone:hover .del, .edit:focus-visible { opacity: 1; }
+  .edit:hover { color: var(--ink); }
+  .row-text.editable { cursor: pointer; }
+  .row-text.editable:hover { text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+  .head-actions { display: flex; gap: 14px; align-items: center; padding-bottom: 4px; }
+  .head-actions .btn-ghost { font-size: 13px; padding: 4px 0; }
+  .add-link { border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 13px; cursor: pointer; padding: 8px 0 0; }
+  .add-link:hover { text-decoration: underline; }
+  .fresh { margin-top: 26px; border: 0; background: transparent; color: var(--faint); font: inherit; font-size: 12px; cursor: pointer; padding: 4px 10px; text-align: left; }
+  .fresh:hover { color: var(--overdue); }
+  @media (hover: none) { .del, .edit { opacity: 1; } }
   .banner { border-left: 2px solid var(--overdue); background: var(--sink); color: var(--ink); font-size: 13.5px; line-height: 1.55; padding: 10px 14px; margin: 0 0 22px; word-break: break-word; }
 
   .auth-wrap { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
@@ -702,12 +714,152 @@ function checkRow(opts){
       "aria-label": opts.done ? "Mark not done" : "Mark done", onclick: opts.onToggle },
       el("span", { html: CHECK })),
     el("span", { class: "row-main" },
-      el("span", { class: "row-text", text: opts.text }),
+      el("span", { class: "row-text" + (opts.onEdit ? " editable" : ""), text: opts.text, title: opts.onEdit ? "Click to edit" : null,
+        onclick: opts.onEdit || null }),
       opts.sub ? el("span", { class: "row-sub", text: opts.sub }) : null),
     opts.meta ? el("span", { class: "row-meta" }, opts.meta) : null,
+    opts.onEdit ? editBtn(opts.onEdit) : null,
     opts.onDelete ? el("button", { class: "del", "aria-label": "Delete", text: "×", onclick: opts.onDelete }) : null
   );
   return li;
+}
+function editBtn(fn){
+  return el("button", { class: "edit", "aria-label": "Edit", text: "Edit", onclick: function (e){ e.stopPropagation(); fn(); } });
+}
+function addLink(label, fn){
+  return el("button", { class: "add-link", type: "button", text: "+ " + label, onclick: fn });
+}
+
+/* ---- editing: one dialog, driven by a list of fields per item type ---- */
+var edit = null;
+function F(k, l, t, o, extra){
+  var f = { k: k, l: l, t: t || "text", o: o };
+  if (extra) for (var x in extra) f[x] = extra[x];
+  return f;
+}
+var COLORS = [
+  { v: "var(--c-acad)", l: "Blue" }, { v: "var(--c-career)", l: "Green" }, { v: "var(--c-people)", l: "Plum" },
+  { v: "var(--c-personal)", l: "Ochre" }, { v: "var(--c-admin)", l: "Clay" }
+];
+var FIELDS = {
+  subject:     [F("name", "Subject name"), F("professor", "Professor (optional)"), F("color", "Color", "select", COLORS)],
+  deadline:    [F("title", "Title"), F("type", "Type", "select", DEADLINE_TYPES, { half: true }), F("status", "Status", "select", DEADLINE_STATUS, { half: true }),
+                F("date", "Due date", "date", null, { half: true }), F("time", "Due time", "time", null, { half: true })],
+  todo:        [F("text", "Task")],
+  milestone:   [F("title", "Milestone"), F("date", "Date", "date")],
+  document:    [F("name", "Document / task name"), F("deadline", "Deadline", "date", null, { half: true }), F("status", "Status", "select", DOC_STATUS, { half: true }),
+                F("link", "Link", "text", null, { p: "https://" }), F("notes", "Notes", "textarea")],
+  home:        [F("text", "Task"), F("recur", "Recurring", "select", RECUR)],
+  grocery:     [F("name", "Item"), F("group", "Category", "select", GROCERY_GROUPS)],
+  bill:        [F("name", "Bill name"), F("amount", "Amount", "number", null, { half: true }), F("due", "Due date", "date", null, { half: true }),
+                F("recur", "Recurring", "select", RECUR)],
+  appointment: [F("title", "Title"), F("date", "Date", "date", null, { half: true }), F("time", "Time", "time", null, { half: true })],
+  application: [F("company", "Company"), F("role", "Role"), F("deadline", "Application deadline", "date", null, { half: true }),
+                F("applied", "Date applied", "date", null, { half: true }), F("status", "Status", "select", APP_STATUS)],
+  dated:       [F("text", "What is it?"), F("date", "Date", "date", null, { half: true }), F("time", "Time", "time", null, { half: true })],
+  semester:    [F("semester", "Semester name")]
+};
+function networkingFields(){
+  return [F("text", "Follow-up"), F("personId", "Linked person", "select",
+    [{ v: "", l: "— none —" }].concat(state.people.map(function (p){ return { v: p.id, l: p.name }; })))];
+}
+
+/* opts.remove = { confirm: "message or empty", run: function(){...} } adds a Delete button. */
+function openEdit(title, obj, fields, opts){
+  var vals = {};
+  fields.forEach(function (f){ vals[f.k] = obj[f.k] == null ? "" : obj[f.k]; });
+  add = null;
+  edit = { title: title, obj: obj, fields: fields, vals: vals, remove: (opts && opts.remove) || null };
+  renderEdit();
+}
+function editRow(f){
+  var ctl;
+  if (f.t === "select"){
+    ctl = el("select", { class: "inp", onchange: function (e){ edit.vals[f.k] = e.target.value; } },
+      f.o.map(function (o){
+        var val = typeof o === "object" ? o.v : o, lab = typeof o === "object" ? o.l : o;
+        return el("option", { value: val, selected: String(val) === String(edit.vals[f.k]) ? "selected" : null }, lab);
+      }));
+  } else if (f.t === "textarea"){
+    ctl = el("textarea", { class: "inp", value: edit.vals[f.k], oninput: function (e){ edit.vals[f.k] = e.target.value; } });
+  } else {
+    ctl = el("input", { class: "inp", type: f.t, value: edit.vals[f.k], placeholder: f.p || "",
+      oninput: function (e){ edit.vals[f.k] = e.target.value; },
+      onkeydown: f.t === "text" ? function (e){ if (e.key === "Enter") saveEdit(); } : null });
+  }
+  return el("div", { class: "form-row" }, el("label", { text: f.l }), ctl);
+}
+function renderEdit(){
+  var root = document.getElementById("modalRoot");
+  root.innerHTML = "";
+  if (!edit) return;
+  var body = el("div", {}, el("h2", { text: edit.title }));
+  var fs = edit.fields;
+  for (var i = 0; i < fs.length; i++){
+    if (fs[i].half && fs[i + 1] && fs[i + 1].half){
+      body.appendChild(el("div", { class: "form-grid" }, editRow(fs[i]), editRow(fs[i + 1])));
+      i++;
+    } else body.appendChild(editRow(fs[i]));
+  }
+  body.appendChild(el("div", { class: "modal-actions" },
+    edit.remove
+      ? el("button", { class: "btn-ghost", style: { color: "var(--overdue)" }, text: "Delete", onclick: function (){
+          var r = edit.remove;
+          if (r.confirm && !window.confirm(r.confirm)) return;
+          closeAdd();
+          mutate(r.run);
+        } })
+      : el("span"),
+    el("div", { style: { display: "flex", gap: "10px", alignItems: "center" } },
+      el("button", { class: "btn-ghost", text: "Cancel", onclick: closeAdd }),
+      el("button", { class: "btn-primary", text: "Save", onclick: saveEdit }))));
+  var overlay = el("div", { class: "overlay", onclick: function (e){ if (e.target === overlay) closeAdd(); } },
+    el("div", { class: "modal", role: "dialog", "aria-modal": "true" }, body));
+  root.appendChild(overlay);
+  var first = overlay.querySelector("input, select, textarea");
+  if (first) first.focus();
+  document.onkeydown = function (e){ if (e.key === "Escape") closeAdd(); };
+}
+function saveEdit(){
+  if (!edit) return;
+  var first = edit.fields[0];
+  if (String(edit.vals[first.k] == null ? "" : edit.vals[first.k]).trim() === ""){
+    var h = document.querySelector(".modal h2");
+    if (h){ h.style.color = "var(--overdue)"; h.textContent = first.l + " can't be empty"; }
+    return;
+  }
+  var e = edit;
+  closeAdd();
+  mutate(function (){
+    e.fields.forEach(function (f){
+      var v = e.vals[f.k];
+      if (f.t === "number") v = Number(v) || 0;
+      else if (f.t === "text" || f.t === "textarea") v = String(v).trim();
+      e.obj[f.k] = v;
+    });
+  });
+}
+
+/* ---- a fresh, empty workspace (for clearing the example data) ---- */
+function blank(semester){
+  return {
+    ui: { route: { k: "today" } },
+    academics: { semester: semester || "This semester", subjects: [] },
+    lifeadmin: { documents: [], home: [], groceries: [], bills: [], appointments: [] },
+    career: { applications: [], tasks: [], networking: [] },
+    people: [],
+    personal: { recreation: [], social: [], tasks: [] }
+  };
+}
+function startFresh(){
+  if (!window.confirm("Delete everything, including the example items, and start with an empty workspace? This can't be undone.")) return;
+  var b = blank(state.academics.semester);
+  mutate(function (){ state = b; });
+}
+function openAddPreset(type, values){
+  edit = null;
+  add = { type: type, values: values || {} };
+  renderModal();
 }
 function inlineAdd(key, placeholder, onAdd){
   var input = el("input", { type: "text", placeholder: placeholder, "data-ia": key,
@@ -766,6 +918,8 @@ function renderNav(){
   nav.appendChild(link("personal"));
   nav.appendChild(el("button", { class: "add-open", onclick: openAdd },
     el("span", { class: "plus", text: "+" }), "Add"));
+  nav.appendChild(el("button", { class: "fresh", type: "button", onclick: startFresh,
+    title: "Delete all items, including the examples" }, "Start fresh"));
 }
 
 /* ============ router ============ */
@@ -805,6 +959,7 @@ function pageHead(title, opts){
   left.appendChild(h1);
   if (opts.sub) left.appendChild(el("div", { class: "page-sub", text: opts.sub }));
   head.appendChild(left);
+  if (opts.actions) head.appendChild(el("div", { class: "head-actions" }, opts.actions));
   return head;
 }
 function subnav(area, tabs, current, onPick){
@@ -841,7 +996,11 @@ function subjectStats(s){
 }
 function viewAcademics(pane){
   pane.appendChild(pageHead("Academics", { sub: "What do I need to do for each subject, and what's coming up?" }));
-  pane.appendChild(el("div", { class: "eyebrow", style: { marginBottom: "10px" }, text: state.academics.semester }));
+  pane.appendChild(el("div", { class: "section-head" },
+    el("div", { class: "eyebrow", text: state.academics.semester }),
+    editBtn(function (){ openEdit("Rename semester", state.academics, FIELDS.semester); })));
+  pane.lastChild.lastChild.style.opacity = 1;
+  if (!state.academics.subjects.length) pane.appendChild(el("p", { class: "empty", text: "No subjects yet. Add your first one below." }));
   var ul = el("ul", { class: "rows" });
   state.academics.subjects.forEach(function (s){
     var st = subjectStats(s);
@@ -852,38 +1011,57 @@ function viewAcademics(pane){
         s.professor ? el("span", { class: "row-sub", text: s.professor }) : null),
       el("span", { class: "row-meta" },
         st.next ? metaDate(st.next.date, st.next.time) : el("span", { text: "—" }),
-        el("span", { style: { color: "var(--faint)" }, text: st.open + " open" }))
+        el("span", { style: { color: "var(--faint)" }, text: st.open + " open" })),
+      editBtn(function (){ editSubject(s); })
     ));
   });
-  pane.appendChild(ul);
+  if (state.academics.subjects.length) pane.appendChild(ul);
+  pane.appendChild(inlineAdd("subj", "Add a subject — e.g. Corporate Finance", function (v){
+    var n = state.academics.subjects.length;
+    state.academics.subjects.push({ id: uid(), name: v, professor: "", color: COLORS[n % COLORS.length].v,
+      deadlines: [], todos: [], milestones: [] });
+  }));
+}
+function editSubject(s){
+  openEdit("Edit subject", s, FIELDS.subject, { remove: {
+    confirm: "Delete " + s.name + " and all its deadlines, to-dos and milestones?",
+    run: function (){
+      state.academics.subjects = state.academics.subjects.filter(function (x){ return x !== s; });
+      state.ui.route = { k: "academics" };
+    }
+  } });
 }
 function viewSubject(pane, r){
   var s = subjectById(r.id);
   if (!s) return go({ k: "academics" });
   pane.appendChild(pageHead(s.name, {
     crumb: [{ label: "Academics", go: { k: "academics" } }, { label: state.academics.semester }],
-    swatch: s.color, sub: s.professor || ""
+    swatch: s.color, sub: s.professor || "",
+    actions: [el("button", { class: "btn-ghost", type: "button", text: "Edit subject", onclick: function (){ editSubject(s); } })]
   }));
 
   var dls = s.deadlines.slice().sort(function (a, b){ return (a.date || "9999-99-99") < (b.date || "9999-99-99") ? -1 : 1; });
-  pane.appendChild(section("Upcoming Deadlines", null, rowsList(dls.map(function (d){
+  pane.appendChild(section("Upcoming Deadlines", null, [rowsList(dls.map(function (d){
+    function editDl(){ openEdit("Edit deadline", d, FIELDS.deadline, { remove: { run: function (){ s.deadlines = s.deadlines.filter(function (x){ return x !== d; }); } } }); }
     return el("li", { class: "row" + (d.status === "Done" ? " done" : "") },
       el("span", { class: "row-main" },
         el("span", { class: "type-eyebrow", text: d.type }),
-        el("span", { class: "row-text", text: d.title }),
+        el("span", { class: "row-text editable", text: d.title, title: "Click to edit", onclick: editDl }),
         el("span", { class: "row-sub" }, metaDate(d.date, d.time))),
       el("span", { class: "row-meta" }, statusPill(d.status, DEADLINE_STATUS, function (v){
         mutate(function (){ d.status = v; });
       })),
+      editBtn(editDl),
       el("button", { class: "del", "aria-label": "Delete", text: "×",
         onclick: function (){ mutate(function (){ s.deadlines = s.deadlines.filter(function (x){ return x !== d; }); }); } })
     );
-  }))));
+  })), addLink("Add a deadline", function (){ openAddPreset("academic", { subject: s.id, kind: "deadline" }); })]));
 
   pane.appendChild(section("Things To Do", null, [
     rowsList(s.todos.map(function (t){
       return checkRow({
         text: t.text, done: t.done,
+        onEdit: function (){ openEdit("Edit to-do", t, FIELDS.todo); },
         onToggle: function (){ mutate(function (){ t.done = !t.done; }); },
         onDelete: function (){ mutate(function (){ s.todos = s.todos.filter(function (x){ return x !== t; }); }); }
       });
@@ -897,14 +1075,17 @@ function viewSubject(pane, r){
         el("button", { class: "check" + (m.done ? "" : ""), role: "checkbox", "aria-checked": String(m.done),
           "aria-label": "Toggle milestone", onclick: function (){ mutate(function (){ m.done = !m.done; }); } },
           el("span", { html: CHECK })),
-        el("span", { class: "m-title", text: m.title }),
+        el("span", { class: "m-title row-text editable", text: m.title, title: "Click to edit",
+          onclick: function (){ openEdit("Edit milestone", m, FIELDS.milestone); } }),
         el("span", { class: "row-meta" }, metaDate(m.date)),
+        editBtn(function (){ openEdit("Edit milestone", m, FIELDS.milestone); }),
         el("button", { class: "del", "aria-label": "Delete", text: "×",
           onclick: function (){ mutate(function (){ s.milestones = s.milestones.filter(function (x){ return x !== m; }); }); } })
       );
       node.style.setProperty("--area", s.color);
       return node;
-    })) : el("p", { class: "empty", text: "No milestones set for this subject." })
+    })) : el("p", { class: "empty", text: "No milestones set for this subject." }),
+    addLink("Add a milestone", function (){ openAddPreset("academic", { subject: s.id, kind: "milestone" }); })
   ]));
 }
 
@@ -923,8 +1104,9 @@ function viewLifeAdmin(pane, r){
   if (tab === "documents"){
     var docs = la.documents.slice().sort(function (a, b){ return (a.deadline || "9") < (b.deadline || "9") ? -1 : 1; });
     pane.appendChild(rowsList(docs.map(function (d){
+      function editDoc(){ openEdit("Edit document", d, FIELDS.document, { remove: { run: function (){ la.documents = la.documents.filter(function (x){ return x !== d; }); } } }); }
       var main = el("span", { class: "row-main" },
-        el("span", { class: "row-text", text: d.name }),
+        el("span", { class: "row-text editable", text: d.name, title: "Click to edit", onclick: editDoc }),
         el("span", { class: "row-sub" },
           d.deadline ? metaDate(d.deadline) : el("span", { text: "no deadline" }),
           d.link ? el("a", { class: "link-out", href: d.link, target: "_blank", rel: "noopener",
@@ -933,10 +1115,12 @@ function viewLifeAdmin(pane, r){
       return el("li", { class: "row" + (d.status === "Complete" ? " done" : "") },
         main,
         el("span", { class: "row-meta" }, statusPill(d.status, DOC_STATUS, function (v){ mutate(function (){ d.status = v; }); })),
+        editBtn(editDoc),
         el("button", { class: "del", "aria-label": "Delete", text: "×",
           onclick: function (){ mutate(function (){ la.documents = la.documents.filter(function (x){ return x !== d; }); }); } })
       );
     })));
+    pane.appendChild(addLink("Add a document", function (){ openAddPreset("lifeadmin", { sub: "document" }); }));
   }
 
   if (tab === "home"){
@@ -944,6 +1128,7 @@ function viewLifeAdmin(pane, r){
       return checkRow({
         text: t.text, done: t.done,
         meta: t.recur && t.recur !== "none" ? el("span", { class: "recur", text: "↻ " + t.recur }) : null,
+        onEdit: function (){ openEdit("Edit home task", t, FIELDS.home); },
         onToggle: function (){ mutate(function (){ t.done = !t.done; }); },
         onDelete: function (){ mutate(function (){ la.home = la.home.filter(function (x){ return x !== t; }); }); }
       });
@@ -964,6 +1149,7 @@ function viewLifeAdmin(pane, r){
         rowsList(items.map(function (g){
           return checkRow({
             text: g.name, done: g.done,
+            onEdit: function (){ openEdit("Edit item", g, FIELDS.grocery); },
             onToggle: function (){ mutate(function (){ g.done = !g.done; }); },
             onDelete: function (){ mutate(function (){ la.groceries = la.groceries.filter(function (x){ return x !== g; }); }); }
           });
@@ -979,9 +1165,10 @@ function viewLifeAdmin(pane, r){
     var soon = bills.filter(function (b){ return !b.paid && dayDiff(b.due) <= 7; });
     var rest = bills.filter(function (b){ return soon.indexOf(b) < 0; });
     function billRow(b){
+      function editBill(){ openEdit("Edit bill", b, FIELDS.bill, { remove: { run: function (){ la.bills = la.bills.filter(function (x){ return x !== b; }); } } }); }
       return el("li", { class: "row" + (b.paid ? " done" : "") },
         el("span", { class: "row-main" },
-          el("span", { class: "row-text", text: b.name }),
+          el("span", { class: "row-text editable", text: b.name, title: "Click to edit", onclick: editBill }),
           el("span", { class: "row-sub" },
             metaDate(b.due),
             b.recur && b.recur !== "none" ? el("span", { class: "recur", style: { marginLeft: "10px" }, text: "↻ " + b.recur }) : null,
@@ -995,12 +1182,14 @@ function viewLifeAdmin(pane, r){
           el("button", { class: "pill " + (b.paid ? "good" : "bad"), title: "Toggle paid",
             onclick: function (){ mutate(function (){ b.paid = !b.paid; }); } },
             el("span", { class: "pd" }), b.paid ? "Paid" : "Unpaid")),
+        editBtn(editBill),
         el("button", { class: "del", "aria-label": "Delete", text: "×",
           onclick: function (){ mutate(function (){ la.bills = la.bills.filter(function (x){ return x !== b; }); }); } })
       );
     }
     if (soon.length) pane.appendChild(section("Due soon", null, rowsList(soon.map(billRow))));
     pane.appendChild(section(soon.length ? "All bills" : "Bills", null, rowsList(rest.map(billRow))));
+    pane.appendChild(addLink("Add a bill", function (){ openAddPreset("lifeadmin", { sub: "bill" }); }));
   }
 
   if (tab === "appointments"){
@@ -1008,6 +1197,7 @@ function viewLifeAdmin(pane, r){
     pane.appendChild(rowsList(appts.map(function (a){
       return checkRow({
         text: a.title, done: a.done, meta: metaDate(a.date, a.time),
+        onEdit: function (){ openEdit("Edit appointment", a, FIELDS.appointment); },
         onToggle: function (){ mutate(function (){ a.done = !a.done; }); },
         onDelete: function (){ mutate(function (){ la.appointments = la.appointments.filter(function (x){ return x !== a; }); }); }
       });
@@ -1044,23 +1234,27 @@ function viewCareer(pane, r){
     var apps = cr.applications.slice().sort(function (a, b){ return (a.deadline || "9") < (b.deadline || "9") ? -1 : 1; });
     pane.appendChild(rowsList(apps.map(function (a){
       var closed = a.status === "Rejected" || a.status === "Closed";
+      function editApp(){ openEdit("Edit application", a, FIELDS.application, { remove: { run: function (){ cr.applications = cr.applications.filter(function (x){ return x !== a; }); } } }); }
       return el("li", { class: "row" + (closed ? " done" : "") },
         el("span", { class: "row-main" },
-          el("span", { class: "row-text", text: a.company }),
+          el("span", { class: "row-text editable", text: a.company, title: "Click to edit", onclick: editApp }),
           el("span", { class: "row-sub", text: a.role + (a.applied ? "  ·  applied " + fmtDate(a.applied) : "") })),
         el("span", { class: "row-meta" },
           a.deadline ? metaDate(a.deadline) : el("span", { text: "—" }),
           statusPill(a.status, APP_STATUS, function (v){ mutate(function (){ a.status = v; if (v === "Applied" && !a.applied) a.applied = today(); }); })),
+        editBtn(editApp),
         el("button", { class: "del", "aria-label": "Delete", text: "×",
           onclick: function (){ mutate(function (){ cr.applications = cr.applications.filter(function (x){ return x !== a; }); }); } })
       );
     })));
+    pane.appendChild(addLink("Add an application", function (){ openAddPreset("career", { sub: "application" }); }));
   }
 
   if (tab === "tasks"){
     pane.appendChild(rowsList(cr.tasks.map(function (t){
       return checkRow({
         text: t.text, done: t.done,
+        onEdit: function (){ openEdit("Edit task", t, FIELDS.todo); },
         onToggle: function (){ mutate(function (){ t.done = !t.done; }); },
         onDelete: function (){ mutate(function (){ cr.tasks = cr.tasks.filter(function (x){ return x !== t; }); }); }
       });
@@ -1078,6 +1272,7 @@ function viewCareer(pane, r){
         sub: p ? null : undefined,
         meta: p ? el("button", { class: "link-out", style: { border: 0, background: "none", cursor: "pointer" },
           text: p.name + " ↗", onclick: function (){ go({ k: "person", id: p.id }); } }) : null,
+        onEdit: function (){ openEdit("Edit follow-up", t, networkingFields()); },
         onToggle: function (){ mutate(function (){ t.done = !t.done; }); },
         onDelete: function (){ mutate(function (){ cr.networking = cr.networking.filter(function (x){ return x !== t; }); }); }
       });
@@ -1113,7 +1308,14 @@ function viewPeople(pane){
 
   if (soon.length) pane.appendChild(section("Follow Up Soon", null, rowsList(soon.map(function (p){ return personRow(p, "soon"); }))));
   if (recent.length) pane.appendChild(section("Recently Contacted", null, rowsList(recent.map(function (p){ return personRow(p, "recent"); }))));
-  pane.appendChild(section("Everyone", everyone.length + " people", rowsList(everyone.map(function (p){ return personRow(p, "all"); }))));
+  pane.appendChild(section("Everyone", everyone.length + " people", [
+    rowsList(everyone.map(function (p){ return personRow(p, "all"); })),
+    inlineAdd("person", "Add a person — type a name, then fill in their profile", function (v){
+      var np = person(v, "", "", "", "", "", "", []);
+      state.people.push(np);
+      state.ui.route = { k: "person", id: np.id };
+    })
+  ]));
 }
 function viewPerson(pane, r){
   var p = personById(r.id);
@@ -1143,6 +1345,7 @@ function viewPerson(pane, r){
     rowsList(p.tasks.map(function (t){
       return checkRow({
         text: t.text, done: t.done,
+        onEdit: function (){ openEdit("Edit task", t, FIELDS.todo); },
         onToggle: function (){ mutate(function (){ t.done = !t.done; }); },
         onDelete: function (){ mutate(function (){ p.tasks = p.tasks.filter(function (x){ return x !== t; }); }); }
       });
@@ -1167,6 +1370,7 @@ function viewPersonal(pane){
         return checkRow({
           text: t.text, done: t.done,
           meta: dated && (t.date || t.time) ? metaDate(t.date, t.time) : null,
+          onEdit: function (){ openEdit("Edit item", t, dated ? FIELDS.dated : FIELDS.todo); },
           onToggle: function (){ mutate(function (){ t.done = !t.done; }); },
           onDelete: function (){ mutate(function (){ pr[key] = pr[key].filter(function (x){ return x !== t; }); }); }
         });
@@ -1287,8 +1491,8 @@ function viewUpcoming(pane){
 
 /* ============ ADD MODAL ============ */
 var add = null;
-function openAdd(){ add = { type: null, values: {} }; renderModal(); }
-function closeAdd(){ add = null; document.getElementById("modalRoot").innerHTML = ""; }
+function openAdd(){ edit = null; add = { type: null, values: {} }; renderModal(); }
+function closeAdd(){ add = null; edit = null; document.getElementById("modalRoot").innerHTML = ""; }
 
 function renderModal(){
   var root = document.getElementById("modalRoot");
@@ -1348,12 +1552,16 @@ function formFor(type){
   var wrap = el("div");
   if (type === "academic"){
     var subs = state.academics.subjects.map(function (s){ return { v: s.id, l: s.name }; });
-    wrap.appendChild(fRow("Subject", fSelect("subject", subs)));
-    wrap.appendChild(fRow("What kind?", fSelect("kind", [
-      { v: "deadline", l: "Deadline" }, { v: "todo", l: "To-do" }, { v: "milestone", l: "Milestone" }
-    ])));
-    var kind = v("kind", "deadline");
-    if (kind === "deadline"){
+    var kinds = subs.length
+      ? [{ v: "deadline", l: "Deadline" }, { v: "todo", l: "To-do" }, { v: "milestone", l: "Milestone" }, { v: "subject", l: "New subject" }]
+      : [{ v: "subject", l: "New subject" }];
+    var kind = v("kind", subs.length ? "deadline" : "subject");
+    if (kind !== "subject") wrap.appendChild(fRow("Subject", fSelect("subject", subs)));
+    wrap.appendChild(fRow("What kind?", fSelect("kind", kinds, kind)));
+    if (kind === "subject"){
+      wrap.appendChild(fRow("Subject name", fInput("title", { placeholder: "e.g. Corporate Finance" })));
+      wrap.appendChild(fRow("Professor (optional)", fInput("professor")));
+    } else if (kind === "deadline"){
       wrap.appendChild(fRow("Type", fSelect("dtype", DEADLINE_TYPES)));
       wrap.appendChild(fRow("Title", fInput("title", { placeholder: "e.g. Assignment 3" })));
       wrap.appendChild(el("div", { class: "form-grid" },
@@ -1444,20 +1652,25 @@ function submitAdd(){
   var val = add.values, type = add.type, route;
   try {
     if (type === "academic"){
-      var s = subjectById(val.subject); if (!s) return;
-      var kind = val.kind || "deadline";
-      if (kind === "deadline"){
-        if (!val.title) return warn();
-        s.deadlines.push({ id: uid(), title: val.title, type: val.dtype || "Assignment",
-          date: val.date || "", time: val.time || "", status: "Not started" });
-      } else if (kind === "todo"){
-        if (!val.title) return warn();
-        s.todos.push(mk(val.title));
+      var kind = val.kind || (state.academics.subjects.length ? "deadline" : "subject");
+      if (!val.title) return warn();
+      if (kind === "subject"){
+        var ns = { id: uid(), name: val.title, professor: val.professor || "",
+          color: COLORS[state.academics.subjects.length % COLORS.length].v, deadlines: [], todos: [], milestones: [] };
+        state.academics.subjects.push(ns);
+        route = { k: "subject", id: ns.id };
       } else {
-        if (!val.title) return warn();
-        s.milestones.push(ms(val.title, val.date || ""));
+        var s = subjectById(val.subject || (state.academics.subjects[0] || {}).id); if (!s) return;
+        if (kind === "deadline"){
+          s.deadlines.push({ id: uid(), title: val.title, type: val.dtype || "Assignment",
+            date: val.date || "", time: val.time || "", status: "Not started" });
+        } else if (kind === "todo"){
+          s.todos.push(mk(val.title));
+        } else {
+          s.milestones.push(ms(val.title, val.date || ""));
+        }
+        route = { k: "subject", id: s.id };
       }
-      route = { k: "subject", id: s.id };
     }
     else if (type === "lifeadmin"){
       var sub = val.sub || "document", la = state.lifeadmin;
