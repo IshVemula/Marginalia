@@ -27,7 +27,7 @@ python3 -m http.server 8000   # then open http://localhost:8000
 ## Deploy on Vercel
 
 It's a static site: no framework, no build command, output directory is the
-repo root. `vercel.json` sets clean URLs and a few security headers.
+repo root. `vercel.json` only adds a few security headers.
 
 **CLI**
 
