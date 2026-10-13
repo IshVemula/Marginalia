@@ -6,6 +6,6 @@
 //
 // NEVER put the "service_role" key here.
 window.MARGINALIA_CONFIG = {
-  supabaseUrl: "https://YOUR-PROJECT-REF.supabase.co",
-  supabaseAnonKey: "YOUR-ANON-KEY"
+  supabaseUrl: "https://jcxaojzpmbqywpcmyumq.supabase.co",
+  supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpjeGFvanpwbWJxeXdwY215dW1xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5MjE3MjQsImV4cCI6MjEwNzQ5NzcyNH0.p5xjMTN6JzvEWKrKAH_61L9rKL11uonNiQNvyqxTgwo"
 };
