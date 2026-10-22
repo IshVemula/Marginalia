@@ -124,7 +124,8 @@ test('the email: subject, plain-text fallback, and everything from your data is 
   assert.ok(!/<[a-z]/i.test(email.text.replace('<script>alert("x")</script> & co', '')));       // the text version is plain text
   assert.match(email.text, /^YOUR DAY: Thursday, Oct 22/);
   assert.match(email.text, /CLASSES TODAY\n {2}8:40 AM – 9:55 AM {2}AI Applications — Lecture {2}\(Room 120\)/);
-  assert.match(email.text, /OVERDUE\n {2}Academics\n {4}Technology Strategy — Reading response 2 {2}\(2 days overdue\)/);
+  assert.match(email.text, /^YOUR DAY: Thursday, Oct 22\n2 classes · \d+ due today · \d+ overdue\n/);          // a one-line summary under the title
+  assert.match(email.text, /OVERDUE\n {2}Academics\n {4}\[ \] Technology Strategy — Reading response 2 {2}\(2 days overdue\)/);   // things to do get a checkbox
   assert.equal(escapeHtml(`<>&"'`), '&lt;&gt;&amp;&quot;&#39;');
 });
 
