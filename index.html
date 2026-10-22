@@ -602,6 +602,8 @@ var queued = "";                        // data waiting to upload
 var saveTimer = null;
 var inflight = false;
 var rev = null;                         // version of the cloud row we last saw (null = no row yet)
+var hasRev = true;                      // false until supabase/002_add_rev.sql has been run (then we save the old way)
+var REV_NOTE = "Syncing with Claude is off until you run supabase/002_add_rev.sql in the Supabase SQL Editor. Everything else works as before.";
 var pullTimer = null;
 
 function dataOnly(s){ var c = {}; for (var k in s) if (k !== "ui") c[k] = s[k]; return c; }
@@ -619,7 +621,7 @@ function setSync(s){
   if (!n) return;
   n.className = "sync" + (s === "error" ? " error" : "");
   n.textContent = ({ saved: "Saved", saving: "Saving…", error: "Not saved" })[s] || "";
-  if (s !== "error") showBanner("");
+  if (s !== "error") showBanner(hasRev ? "" : REV_NOTE);
 }
 function showBanner(msg){
   var b = document.getElementById("banner");
@@ -715,11 +717,15 @@ function applyData(d){
 }
 
 function fetchRemote(){
-  return sb.from("app_state").select("data,rev").eq("user_id", userId).maybeSingle().then(function (res){
+  return sb.from("app_state").select(hasRev ? "data,rev" : "data").eq("user_id", userId).maybeSingle().then(function (res){
+    if (res.error && hasRev && (res.error.code === "42703" || /column .*rev/i.test(res.error.message || ""))){
+      hasRev = false;                          // the database update hasn't been run yet: carry on the old way
+      return fetchRemote();
+    }
     if (res.error) throw friendly(res.error);
     if (!res.data) return null;
     if (!validState(res.data.data)) throw friendly({ message: "Saved data looks unreadable, so nothing was changed." });
-    return { data: res.data.data, rev: res.data.rev };
+    return { data: res.data.data, rev: hasRev ? res.data.rev : null };
   });
 }
 
@@ -729,14 +735,18 @@ function flush(){
   inflight = true;
   var payload = queued, data = JSON.parse(payload);
   // Only save if the cloud is still at the version we loaded; otherwise merge first.
-  var req = rev == null
-    ? sb.from("app_state").insert({ user_id: userId, data: data }).select("rev")
-    : sb.from("app_state").update({ data: data }).eq("user_id", userId).eq("rev", rev).select("rev");
+  var req = !hasRev
+    ? sb.from("app_state").upsert({ user_id: userId, data: data, updated_at: new Date().toISOString() })
+    : rev == null
+      ? sb.from("app_state").insert({ user_id: userId, data: data }).select("rev")
+      : sb.from("app_state").update({ data: data }).eq("user_id", userId).eq("rev", rev).select("rev");
   return req.then(function (res){
     if (res.error && res.error.code === "23505") return "conflict";     // the row was created in the meantime
     if (res.error) throw res.error;
-    if (!res.data || !res.data.length) return "conflict";               // saved elsewhere since we loaded
-    rev = res.data[0].rev;
+    if (hasRev){
+      if (!res.data || !res.data.length) return "conflict";             // saved elsewhere since we loaded
+      rev = res.data[0].rev;
+    }
     lastSaved = payload;
     try { localStorage.removeItem(LEGACY_KEY); } catch (e) {}
     return "ok";
@@ -777,7 +787,7 @@ function busy(){
     !!(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.closest("#pane"));
 }
 function pull(){
-  if (!sb || !userId || !state || busy()) return;
+  if (!sb || !userId || !state || !hasRev || busy()) return;
   sb.from("app_state").select("rev").eq("user_id", userId).maybeSingle().then(function (res){
     if (res.error || !res.data || res.data.rev === rev || busy()) return null;
     return fetchRemote().then(function (remote){
@@ -1944,7 +1954,7 @@ function signOut(){
 function leave(){
   clearTimeout(saveTimer);
   clearInterval(pullTimer);
-  state = null; userId = null; lastSaved = ""; queued = ""; inflight = false; rev = null;
+  state = null; userId = null; lastSaved = ""; queued = ""; inflight = false; rev = null; hasRev = true;
   try { localStorage.removeItem(LEGACY_KEY); } catch (e) {}
   showLogin();
 }
