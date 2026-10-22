@@ -543,11 +543,11 @@ function seed(){
     },
     career: {
       applications: [
-        app("Cornell Tech Startup Studio", "Fellow", offset(5), "Applied", offset(-2)),
-        app("Meridian Capital", "Summer Analyst", offset(12), "Preparing", ""),
-        app("Google", "APM Intern", offset(19), "Preparing", ""),
-        app("Northwind Labs", "Product Management Intern", offset(27), "Interested", ""),
-        app("Bridgewater", "Investment Associate Intern", offset(32), "Interested", "")
+        app("Cornell Tech Startup Studio", "Fellow", offset(-2), "Applied"),
+        app("Meridian Capital", "Summer Analyst", offset(12), "Preparing"),
+        app("Google", "APM Intern", offset(19), "Preparing"),
+        app("Northwind Labs", "Product Management Intern", offset(27), "Interested"),
+        app("Bridgewater", "Investment Associate Intern", offset(32), "Interested")
       ],
       tasks: [ mk("Update resume"), mk("Write cover letter for Meridian"), mk("Practice case interview"),
                mk("Update portfolio site"), mk("Prepare interview questions") ],
@@ -582,7 +582,17 @@ function gro(n, g){ return { id: uid(), name: n, group: g, done: false }; }
 function ms(t, d){ return { id: uid(), title: t, date: d, done: false }; }
 function bill(n, a, d, r){ return { id: uid(), name: n, amount: a, due: d, paid: false, recur: r }; }
 function appt(t, d, tm){ return { id: uid(), title: t, date: d, time: tm, done: false }; }
-function app(c, r, dl, st, ad){ return { id: uid(), company: c, role: r, deadline: dl, status: st, applied: ad }; }
+function app(c, r, dl, st){ return { id: uid(), company: c, role: r, deadline: dl, status: st }; }
+/* An application has one date. While you're still to apply (Interested or Preparing) it is the deadline and
+   counts for Today / Upcoming. After that it's just the day you applied: shown, but never overdue. */
+function appPending(a){ return a.status === "Interested" || a.status === "Preparing"; }
+/* Older data kept two dates. Fold "date applied" into the single date once someone has applied. */
+function oneDatePerApplication(d){
+  ((d.career && d.career.applications) || []).forEach(function (a){
+    if (a.applied && !appPending(a)) a.deadline = a.applied;
+    delete a.applied;
+  });
+}
 function dat(t, d, tm){ return { id: uid(), text: t, done: false, date: d, time: tm }; }
 function person(n, o, r, h, lc, nf, notes, tasks){
   return { id: uid(), name: n, org: o, role: r, how: h, last: lc, next: nf, notes: notes,
@@ -887,8 +897,8 @@ var FIELDS = {
   bill:        [F("name", "Bill name"), F("amount", "Amount", "number", null, { half: true }), F("due", "Due date", "date", null, { half: true }),
                 F("recur", "Recurring", "select", RECUR)],
   appointment: [F("title", "Title"), F("date", "Date", "date", null, { half: true }), F("time", "Time", "time", null, { half: true })],
-  application: [F("company", "Company"), F("role", "Role"), F("deadline", "Application deadline", "date", null, { half: true }),
-                F("applied", "Date applied", "date", null, { half: true }), F("status", "Status", "select", APP_STATUS)],
+  application: [F("company", "Company"), F("role", "Role"), F("status", "Status", "select", APP_STATUS),
+                F("deadline", "Date (deadline, or the day you applied)", "date")],
   dated:       [F("text", "What is it?"), F("date", "Date", "date", null, { half: true }), F("time", "Time", "time", null, { half: true })],
   semester:    [F("semester", "Semester name")]
 };
@@ -1379,10 +1389,12 @@ function viewCareer(pane, r){
       return el("li", { class: "row" + (closed ? " done" : "") },
         el("span", { class: "row-main" },
           el("span", { class: "row-text editable", text: a.company, title: "Click to edit", onclick: editApp }),
-          el("span", { class: "row-sub", text: a.role + (a.applied ? "  ·  applied " + fmtDate(a.applied) : "") })),
+          el("span", { class: "row-sub", text: a.role })),
         el("span", { class: "row-meta" },
-          a.deadline ? metaDate(a.deadline) : el("span", { text: "—" }),
-          statusPill(a.status, APP_STATUS, function (v){ mutate(function (){ a.status = v; if (v === "Applied" && !a.applied) a.applied = today(); }); })),
+          !a.deadline ? el("span", { text: "—" })
+            : appPending(a) ? metaDate(a.deadline)                      // still to apply: a real deadline, red if overdue
+            : el("span", { text: fmtDate(a.deadline) }),                // already applied: just the date, never overdue
+          statusPill(a.status, APP_STATUS, function (v){ mutate(function (){ a.status = v; }); })),
         editBtn(editApp),
         el("button", { class: "del", "aria-label": "Delete", text: "×",
           onclick: function (){ mutate(function (){ cr.applications = cr.applications.filter(function (x){ return x !== a; }); }); } })
@@ -1541,7 +1553,7 @@ function eachDated(cb){
   state.lifeadmin.documents.forEach(function (d){ if (d.status !== "Complete" && d.deadline) cb({ date: d.deadline, time: "", title: d.name, area: "lifeadmin", toggle: function (){ d.status = "Complete"; }, open: { k: "lifeadmin", tab: "documents" } }); });
   state.lifeadmin.bills.forEach(function (b){ if (!b.paid) cb({ date: b.due, time: "", title: b.name + " — $" + b.amount, area: "lifeadmin", toggle: function (){ b.paid = true; }, open: { k: "lifeadmin", tab: "bills" } }); });
   state.lifeadmin.appointments.forEach(function (a){ if (!a.done && a.date) cb({ date: a.date, time: a.time, title: a.title, area: "lifeadmin", toggle: function (){ a.done = true; }, open: { k: "lifeadmin", tab: "appointments" } }); });
-  state.career.applications.forEach(function (a){ if (["Rejected","Closed","Offer"].indexOf(a.status) < 0 && a.deadline) cb({ date: a.deadline, time: "", title: a.company + " — " + a.role, area: "career", toggle: null, open: { k: "career", tab: "applications" } }); });
+  state.career.applications.forEach(function (a){ if (appPending(a) && a.deadline) cb({ date: a.deadline, time: "", title: a.company + " — " + a.role, area: "career", toggle: null, open: { k: "career", tab: "applications" } }); });
   state.people.forEach(function (p){ if (p.next) cb({ date: p.next, time: "", title: "Follow up: " + p.name, area: "people", toggle: function (){ p.last = today(); p.next = ""; }, open: { k: "person", id: p.id } }); });
   ["recreation","social"].forEach(function (key){
     state.personal[key].forEach(function (t){ if (!t.done && t.date) cb({ date: t.date, time: t.time, title: t.text, area: "personal", toggle: function (){ t.done = true; }, open: { k: "personal" } }); });
@@ -1762,8 +1774,10 @@ function formFor(type){
       wrap.appendChild(fRow("Company", fInput("company")));
       wrap.appendChild(fRow("Role", fInput("role")));
       wrap.appendChild(el("div", { class: "form-grid" },
-        fRow("Application deadline", fInput("date", { type: "date" })),
-        fRow("Status", fSelect("status", APP_STATUS))));
+        fRow("Status", fSelect("status", APP_STATUS)),
+        fRow("Date", fInput("date", { type: "date" }))));
+      wrap.appendChild(el("p", { class: "page-sub", style: { margin: "-4px 0 12px", fontSize: "12px" },
+        text: "One date: the deadline while you're still preparing, or the day you applied." }));
     } else if (cs === "task"){
       wrap.appendChild(fRow("Task", fInput("text", { placeholder: "e.g. Update resume" })));
     } else {
@@ -1838,7 +1852,7 @@ function submitAdd(){
     else if (type === "career"){
       var cs = val.sub || "application", cr = state.career;
       if (cs === "application"){ if (!val.company) return warn();
-        cr.applications.push(app(val.company, val.role || "", val.date || "", val.status || "Interested", ""));
+        cr.applications.push(app(val.company, val.role || "", val.date || "", val.status || "Interested"));
         route = { k: "career", tab: "applications" };
       } else if (cs === "task"){ if (!val.text) return warn();
         cr.tasks.push(mk(val.text)); route = { k: "career", tab: "tasks" };
@@ -1934,6 +1948,7 @@ function showFatal(message){
 function enter(user){
   userId = user.id;
   loadRemote().then(function (d){
+    oneDatePerApplication(d);
     d.ui = { route: readRoute() };
     state = d;
     authRoot.innerHTML = "";
