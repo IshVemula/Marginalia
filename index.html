@@ -1404,8 +1404,6 @@ function subjectStats(s){
 }
 function viewAcademics(pane){
   pane.appendChild(pageHead("Academics", { sub: "What do I need to do for each subject, and what's coming up?" }));
-  var weekAll = weekCalendar(state.academics.subjects, { title: "This week, all subjects" });
-  if (weekAll) pane.appendChild(weekAll);
   pane.appendChild(el("div", { class: "section-head" },
     el("div", { class: "eyebrow", text: state.academics.semester }),
     editBtn(function (){ openEdit("Rename semester", state.academics, FIELDS.semester); })));
