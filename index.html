@@ -354,6 +354,33 @@
   .ct-next { font-family: var(--font-mono); font-size: 11px; color: var(--faint); }
   .ct-row:hover .edit, .ct-row:hover .del { opacity: 1; }
   .class-times .add-link { align-self: flex-start; padding-top: 4px; }
+  .week { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 12px 10px; margin-bottom: 28px; overflow-x: auto; }
+  .week-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; position: sticky; left: 0; }
+  .week-head .lbl { font-size: 11px; font-weight: 600; letter-spacing: 0.13em; text-transform: uppercase; color: var(--muted); }
+  .week-head .range { font-family: var(--font-mono); font-size: 11px; color: var(--faint); }
+  .week-grid { display: grid; grid-template-columns: 42px repeat(7, minmax(62px, 1fr)); min-width: 548px; }
+  .week-day-head { text-align: center; padding: 2px 0 5px; border-bottom: 2px solid transparent; font-family: var(--font-mono); font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.06em; }
+  .week-day-head b { display: block; font-family: var(--font-sans); font-weight: 600; font-size: 14px; letter-spacing: 0; color: var(--ink); }
+  .week-day-head.today { border-bottom-color: var(--accent); color: var(--accent); }
+  .week-axis-due { font-family: var(--font-mono); font-size: 9.5px; color: var(--faint); text-align: right; padding: 3px 6px 0 0; }
+  .week-due { border-left: 1px solid var(--line); padding: 2px 3px 6px; display: flex; flex-direction: column; gap: 1px; min-height: 22px; min-width: 0; }
+  .week-chip { display: flex; align-items: center; gap: 4px; min-width: 0; border: 0; background: transparent; font: inherit; font-size: 10.5px; line-height: 1.3; color: var(--ink); padding: 1px 2px; text-align: left; border-radius: 3px; }
+  button.week-chip { cursor: pointer; }
+  button.week-chip:hover { background: var(--sink); }
+  .week-chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--c, var(--accent)); flex: none; }
+  .week-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .week-more { font-family: var(--font-mono); font-size: 9.5px; color: var(--faint); padding-left: 2px; }
+  .week-axis { position: relative; border-top: 1px solid var(--line); }
+  .week-axis span { position: absolute; right: 6px; margin-top: 2px; font-family: var(--font-mono); font-size: 9.5px; color: var(--faint); white-space: nowrap; }
+  .week-col { position: relative; min-width: 0; border-left: 1px solid var(--line); border-top: 1px solid var(--line);
+    background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 27px, var(--line) 27px, var(--line) 28px); }
+  .week-col.today, .week-due.today { background-color: var(--sink); }
+  .week-block { position: absolute; display: flex; flex-direction: column; align-items: flex-start; overflow: hidden; border: 0; border-left: 2px solid var(--c, var(--accent));
+    background: color-mix(in srgb, var(--c, var(--accent)) 22%, var(--surface)); color: var(--ink); font: inherit; font-size: 10.5px; line-height: 1.25;
+    padding: 2px 4px; margin-left: 1px; text-align: left; border-radius: 0 4px 4px 0; cursor: pointer; transition: filter .12s ease; }
+  .week-block:hover { filter: brightness(1.12); }
+  .wb-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+  .wb-time { font-family: var(--font-mono); font-size: 9.5px; color: var(--muted); white-space: nowrap; }
   .days { display: flex; gap: 6px; flex-wrap: wrap; }
   .day { border: 1px solid var(--line-strong); background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; padding: 6px 11px; border-radius: 6px; cursor: pointer; transition: background .12s ease, color .12s ease, border-color .12s ease; }
   .day:hover { border-color: var(--accent); color: var(--ink); }
@@ -513,6 +540,132 @@ function classBox(title, groups){
         x.location ? el("span", { class: "class-place", text: x.location }) : null));
     });
   });
+  return box;
+}
+/* ---- a small calendar for this week (Monday to Sunday): classes on a time axis, deadlines as chips ---- */
+var HOUR_PX = 28;
+function mins(clock){ var p = String(clock || "").split(":"); return (+p[0]) * 60 + (+p[1] || 0); }
+function shiftIso(iso, n){ var d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n); return toISO(d); }
+function weekDates(base){                                 // the seven dates of the week containing `base` (default today), Monday first
+  base = base || today();
+  var dow = new Date(base + "T00:00:00").getDay();        // 0 = Sunday
+  var sinceMonday = (dow + 6) % 7;
+  return [0, 1, 2, 3, 4, 5, 6].map(function (i){ return shiftIso(base, i - sinceMonday); });
+}
+function weekRange(days){
+  var a = new Date(days[0] + "T00:00:00"), b = new Date(days[6] + "T00:00:00");
+  return MON[a.getMonth()] + " " + a.getDate() + " – " + (a.getMonth() !== b.getMonth() ? MON[b.getMonth()] + " " : "") + b.getDate();
+}
+function weekData(subjects, days){
+  var classes = {}, due = {};
+  days.forEach(function (d){ classes[d] = []; due[d] = []; });
+  subjects.forEach(function (s){
+    days.forEach(function (d){
+      (s.schedule || []).forEach(function (c){
+        if (c.start && meetsOn(c, d)){
+          var start = mins(c.start);
+          classes[d].push({ s: s, c: c, start: start, end: c.end ? mins(c.end) : start + 60 });
+        }
+      });
+    });
+    (s.deadlines || []).forEach(function (x){
+      if (x.status !== "Done" && due[x.date]) due[x.date].push({ s: s, title: x.title || "Deadline", detail: [x.type, x.time ? fmtTime(x.time) : ""].filter(Boolean).join(" · ") });
+    });
+    (s.milestones || []).forEach(function (m){
+      if (!m.done && due[m.date]) due[m.date].push({ s: s, title: m.title || "Milestone", detail: "Milestone" });
+    });
+  });
+  return { classes: classes, due: due };
+}
+/* Classes that overlap in time sit side by side instead of on top of each other. */
+function layoutDay(items){
+  items.sort(function (a, b){ return a.start - b.start || a.end - b.end; });
+  var cluster = [], clusterEnd = -1;
+  function close(){
+    var ends = [];
+    cluster.forEach(function (it){
+      var col = 0;
+      while (col < ends.length && ends[col] > it.start) col++;
+      it.col = col; ends[col] = it.end;
+    });
+    cluster.forEach(function (it){ it.cols = ends.length; });
+    cluster = []; clusterEnd = -1;
+  }
+  items.forEach(function (it){
+    if (cluster.length && it.start >= clusterEnd) close();
+    cluster.push(it); clusterEnd = Math.max(clusterEnd, it.end);
+  });
+  if (cluster.length) close();
+  return items;
+}
+/* subjects: the ones to draw. opts.onlySubject: draw for one subject (labels are the class name, clicks edit it). Returns null when there is nothing this week. */
+function weekCalendar(subjects, opts){
+  opts = opts || {};
+  var days = weekDates(), data = weekData(subjects, days), todayIso = today();
+  var hasClass = days.some(function (d){ return data.classes[d].length; });
+  var hasDue = days.some(function (d){ return data.due[d].length; });
+  if (!hasClass && !hasDue) return null;
+
+  var lo = 24 * 60, hi = 0;
+  days.forEach(function (d){ data.classes[d].forEach(function (x){ lo = Math.min(lo, x.start); hi = Math.max(hi, x.end); }); });
+  var loH = Math.floor(lo / 60), hiH = Math.ceil(hi / 60);
+  if (hasClass && hiH - loH < 3) hiH = loH + 3;
+  var bodyPx = (hiH - loH) * HOUR_PX;
+
+  var box = el("section", { class: "week", "aria-label": "This week" },
+    el("div", { class: "week-head" },
+      el("span", { class: "lbl", text: opts.title || "This week" }),
+      el("span", { class: "range", text: weekRange(days) })));
+  var grid = el("div", { class: "week-grid" });
+  grid.appendChild(el("div"));
+  days.forEach(function (d){
+    var date = new Date(d + "T00:00:00");
+    grid.appendChild(el("div", { class: "week-day-head" + (d === todayIso ? " today" : "") },
+      el("span", { text: WD[date.getDay()] }), el("b", { text: String(date.getDate()) })));
+  });
+
+  grid.appendChild(el("div", { class: "week-axis-due", text: hasDue ? "due" : "" }));
+  days.forEach(function (d){
+    var lane = el("div", { class: "week-due" + (d === todayIso ? " today" : "") });
+    data.due[d].slice(0, 2).forEach(function (x){
+      var chip = el(opts.onlySubject ? "div" : "button", { class: "week-chip", title: x.s.name + " — " + x.title + (x.detail ? " (" + x.detail + ")" : ""),
+        type: opts.onlySubject ? null : "button" }, el("span", { text: x.title }));
+      chip.style.setProperty("--c", x.s.color);
+      if (!opts.onlySubject) chip.addEventListener("click", function (){ go({ k: "subject", id: x.s.id }); });
+      lane.appendChild(chip);
+    });
+    if (data.due[d].length > 2){
+      lane.appendChild(el("div", { class: "week-more", text: "+" + (data.due[d].length - 2) + " more",
+        title: data.due[d].slice(2).map(function (x){ return x.s.name + " — " + x.title; }).join("\n") }));
+    }
+    grid.appendChild(lane);
+  });
+
+  if (hasClass){
+    var axis = el("div", { class: "week-axis", style: { height: bodyPx + "px" } });
+    for (var h = loH; h < hiH; h++){
+      axis.appendChild(el("span", { style: { top: (h - loH) * HOUR_PX + "px" }, text: fmtTime(String(h).padStart(2, "0") + ":00").replace(":00", "") }));
+    }
+    grid.appendChild(axis);
+    days.forEach(function (d){
+      var col = el("div", { class: "week-col" + (d === todayIso ? " today" : ""), style: { height: bodyPx + "px" } });
+      layoutDay(data.classes[d]).forEach(function (x){
+        var height = Math.max(20, (x.end - x.start) * HOUR_PX / 60 - 2);
+        var label = opts.onlySubject ? (x.c.title || "Class") : x.s.name;
+        var full = x.s.name + (x.c.title ? " — " + x.c.title : "") + " · " + timeRange(x.c.start, x.c.end) + (x.c.location ? " · " + x.c.location : "");
+        var block = el("button", { class: "week-block", type: "button", title: full,
+          style: { top: (x.start - loH * 60) * HOUR_PX / 60 + "px", height: height + "px",
+                   left: x.col * 100 / x.cols + "%", width: "calc(" + 100 / x.cols + "% - 2px)" } },
+          el("span", { class: "wb-name", text: label }),
+          height >= 34 ? el("span", { class: "wb-time", text: fmtTime(x.c.start) }) : null);
+        block.style.setProperty("--c", x.s.color);
+        block.addEventListener("click", function (){ if (opts.onlySubject) editClass(x.s, x.c); else go({ k: "subject", id: x.s.id }); });
+        col.appendChild(block);
+      });
+      grid.appendChild(col);
+    });
+  }
+  box.appendChild(grid);
   return box;
 }
 function cls(title, days, start, end, location){
@@ -1251,6 +1404,8 @@ function subjectStats(s){
 }
 function viewAcademics(pane){
   pane.appendChild(pageHead("Academics", { sub: "What do I need to do for each subject, and what's coming up?" }));
+  var weekAll = weekCalendar(state.academics.subjects, { title: "This week, all subjects" });
+  if (weekAll) pane.appendChild(weekAll);
   pane.appendChild(el("div", { class: "section-head" },
     el("div", { class: "eyebrow", text: state.academics.semester }),
     editBtn(function (){ openEdit("Rename semester", state.academics, FIELDS.semester); })));
@@ -1331,6 +1486,9 @@ function viewSubject(pane, r){
       el("button", { class: "btn-ghost", type: "button", style: { color: "var(--overdue)" }, text: "Delete subject", onclick: function (){ removeSubject(s); } })
     ]
   }));
+
+  var weekOne = weekCalendar([s], { title: "This week", onlySubject: true });
+  if (weekOne) pane.appendChild(weekOne);
 
   var dls = s.deadlines.slice().sort(function (a, b){ return (a.date || "9999-99-99") < (b.date || "9999-99-99") ? -1 : 1; });
   pane.appendChild(section("Upcoming Deadlines", null, [rowsList(dls.map(function (d){
