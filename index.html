@@ -782,9 +782,10 @@ function seed(){
         app("Northwind Labs", "Product Management Intern", offset(27), "Interested"),
         app("Bridgewater", "Investment Associate Intern", offset(32), "Interested")
       ],
-      tasks: [ mk("Update resume"), mk("Write cover letter for Meridian"), mk("Practice case interview"),
+      tasks: [ mk("Update resume"), dat("Write cover letter for Meridian", offset(4), ""), dat("Practice case interview", offset(2), "16:00"),
                mk("Update portfolio site"), mk("Prepare interview questions") ],
-      networking: []
+      networking: [ net("Thank-you note after the info session", offset(1), ""), net("Fall Career Fair", offset(8), "10:00"),
+                    net("Cornell alumni mixer", offset(5), "18:00") ]
     },
     people: [
       person("Ricardo Puga", "Cornell", "Professor", "Independent study advisor", offset(-8), offset(-1),
@@ -826,6 +827,7 @@ function oneDatePerApplication(d){
     delete a.applied;
   });
 }
+function net(t, d, tm){ return { id: uid(), text: t, done: false, personId: "", date: d || "", time: tm || "" }; }
 function dat(t, d, tm){ return { id: uid(), text: t, done: false, date: d, time: tm }; }
 function person(n, o, r, h, lc, nf, notes, tasks){
   return { id: uid(), name: n, org: o, role: r, how: h, last: lc, next: nf, notes: notes,
@@ -1081,6 +1083,12 @@ function personById(id){
 }
 
 /* ============ small components ============ */
+/* open items first, dated before undated, earliest first (the sort is stable, so undated items keep their order) */
+function byWhen(a, b){
+  if (!!a.done !== !!b.done) return a.done ? 1 : -1;
+  var ka = a.date ? a.date + (a.time || "") : "9999", kb = b.date ? b.date + (b.time || "") : "9999";
+  return ka < kb ? -1 : ka > kb ? 1 : 0;
+}
 function checkRow(opts){
   var li = el("li", { class: "row" + (opts.done ? " done" : "") },
     el("button", { class: "check", role: "checkbox", "aria-checked": String(!!opts.done),
@@ -1122,6 +1130,7 @@ var FIELDS = {
   deadline:    [F("title", "Title"), F("type", "Type", "select", DEADLINE_TYPES, { half: true }), F("status", "Status", "select", DEADLINE_STATUS, { half: true }),
                 F("date", "Due date", "date", null, { half: true }), F("time", "Due time", "time", null, { half: true })],
   todo:        [F("text", "Task")],
+  careertask:  [F("text", "Task"), F("date", "Date", "date", null, { half: true }), F("time", "Time", "time", null, { half: true })],
   milestone:   [F("title", "Milestone"), F("date", "Date", "date")],
   document:    [F("name", "Document / task name"), F("deadline", "Deadline", "date", null, { half: true }), F("status", "Status", "select", DOC_STATUS, { half: true }),
                 F("link", "Link", "text", null, { p: "https://" }), F("notes", "Notes", "textarea")],
@@ -1140,8 +1149,9 @@ var FIELDS = {
                 F("from", "First day (optional)", "date", null, { half: true }), F("until", "Last day (optional)", "date", null, { half: true })]
 };
 function networkingFields(){
-  return [F("text", "Follow-up"), F("personId", "Linked person", "select",
-    [{ v: "", l: "— none —" }].concat(state.people.map(function (p){ return { v: p.id, l: p.name }; })))];
+  return [F("text", "Follow-up or event"), F("personId", "Linked person", "select",
+    [{ v: "", l: "— none —" }].concat(state.people.map(function (p){ return { v: p.id, l: p.name }; }))),
+    F("date", "Date", "date", null, { half: true }), F("time", "Time", "time", null, { half: true })];
 }
 
 /* opts.remove = { confirm: "message or empty", run: function(){...} } adds a Delete button. */
@@ -1701,33 +1711,37 @@ function viewCareer(pane, r){
   }
 
   if (tab === "tasks"){
-    pane.appendChild(rowsList(cr.tasks.map(function (t){
+    pane.appendChild(rowsList(cr.tasks.slice().sort(byWhen).map(function (t){
       return checkRow({
         text: t.text, done: t.done,
-        onEdit: function (){ openEdit("Edit task", t, FIELDS.todo); },
+        meta: t.date || t.time ? metaDate(t.date, t.time) : null,
+        onEdit: function (){ openEdit("Edit task", t, FIELDS.careertask); },
         onToggle: function (){ mutate(function (){ t.done = !t.done; }); },
         onDelete: function (){ mutate(function (){ cr.tasks = cr.tasks.filter(function (x){ return x !== t; }); }); }
       });
     })));
-    pane.appendChild(inlineAdd("ctask", "Add a career task — e.g. update resume", function (v){ cr.tasks.push(mk(v)); }));
+    pane.appendChild(inlineAdd("ctask", "Add a career task — e.g. update resume (click Edit to set a date)", function (v){ cr.tasks.push(mk(v)); }));
   }
 
   if (tab === "networking"){
     pane.appendChild(el("p", { class: "page-sub", style: { marginTop: 0, marginBottom: "14px" },
-      text: "Reach-outs tied to people. Click a name to open their profile." }));
-    pane.appendChild(rowsList(cr.networking.map(function (t){
+      text: "Reach-outs and events (coffee chats, mixers, career fairs), with an optional date and time. Click a name to open their profile." }));
+    pane.appendChild(rowsList(cr.networking.slice().sort(byWhen).map(function (t){
       var p = t.personId ? personById(t.personId) : null;
       return checkRow({
         text: t.text, done: t.done,
         sub: p ? null : undefined,
-        meta: p ? el("button", { class: "link-out", style: { border: 0, background: "none", cursor: "pointer" },
-          text: p.name + " ↗", onclick: function (){ go({ k: "person", id: p.id }); } }) : null,
+        meta: [
+          t.date || t.time ? metaDate(t.date, t.time) : null,
+          p ? el("button", { class: "link-out", style: { border: 0, background: "none", cursor: "pointer" },
+            text: p.name + " ↗", onclick: function (){ go({ k: "person", id: p.id }); } }) : null
+        ],
         onEdit: function (){ openEdit("Edit follow-up", t, networkingFields()); },
         onToggle: function (){ mutate(function (){ t.done = !t.done; }); },
         onDelete: function (){ mutate(function (){ cr.networking = cr.networking.filter(function (x){ return x !== t; }); }); }
       });
     })));
-    pane.appendChild(inlineAdd("net", "Add a follow-up — e.g. message Cornell alum", function (v){ cr.networking.push({ id: uid(), text: v, done: false, personId: "" }); }));
+    pane.appendChild(inlineAdd("net", "Add a follow-up or event — e.g. coffee chat with a Cornell alum", function (v){ cr.networking.push(net(v, "", "")); }));
   }
 }
 
@@ -1851,6 +1865,12 @@ function eachDated(cb){
   state.lifeadmin.bills.forEach(function (b){ if (!b.paid) cb({ date: b.due, time: "", title: b.name + " — $" + b.amount, area: "lifeadmin", toggle: function (){ b.paid = true; }, open: { k: "lifeadmin", tab: "bills" } }); });
   state.lifeadmin.appointments.forEach(function (a){ if (!a.done && a.date) cb({ date: a.date, time: a.time, title: a.title, area: "lifeadmin", toggle: function (){ a.done = true; }, open: { k: "lifeadmin", tab: "appointments" } }); });
   state.career.applications.forEach(function (a){ if (appPending(a) && a.deadline) cb({ date: a.deadline, time: "", title: a.company + " — " + a.role, area: "career", toggle: null, open: { k: "career", tab: "applications" } }); });
+  state.career.tasks.forEach(function (t){ if (!t.done && t.date) cb({ date: t.date, time: t.time, title: t.text, area: "career", toggle: function (){ t.done = true; }, open: { k: "career", tab: "tasks" } }); });
+  state.career.networking.forEach(function (t){
+    if (t.done || !t.date) return;
+    var who = t.personId ? personById(t.personId) : null;
+    cb({ date: t.date, time: t.time, title: t.text + (who ? " — " + who.name : ""), area: "career", toggle: function (){ t.done = true; }, open: { k: "career", tab: "networking" } });
+  });
   state.people.forEach(function (p){ if (p.next) cb({ date: p.next, time: "", title: "Follow up: " + p.name, area: "people", toggle: function (){ p.last = today(); p.next = ""; }, open: { k: "person", id: p.id } }); });
   ["recreation","social"].forEach(function (key){
     state.personal[key].forEach(function (t){ if (!t.done && t.date) cb({ date: t.date, time: t.time, title: t.text, area: "personal", toggle: function (){ t.done = true; }, open: { k: "personal" } }); });
@@ -1861,7 +1881,7 @@ function undatedFill(area){
     return s.todos.filter(function (t){ return !t.done; }).map(function (t){ return { title: t.text, toggle: function (){ t.done = true; }, open: { k: "subject", id: s.id } }; });
   }));
   if (area === "lifeadmin") return state.lifeadmin.home.filter(function (t){ return !t.done; }).map(function (t){ return { title: t.text, toggle: function (){ t.done = true; }, open: { k: "lifeadmin", tab: "home" } }; });
-  if (area === "career") return state.career.tasks.concat(state.career.networking).filter(function (t){ return !t.done; }).map(function (t){ return { title: t.text, toggle: function (){ t.done = true; }, open: { k: "career", tab: "tasks" } }; });
+  if (area === "career") return state.career.tasks.concat(state.career.networking).filter(function (t){ return !t.done && !t.date; }).map(function (t){ return { title: t.text, toggle: function (){ t.done = true; }, open: { k: "career", tab: "tasks" } }; });
   if (area === "personal") return state.personal.tasks.filter(function (t){ return !t.done; }).map(function (t){ return { title: t.text, toggle: function (){ t.done = true; }, open: { k: "personal" } }; });
   return [];
 }
@@ -2091,10 +2111,16 @@ function formFor(type){
         text: "One date: the deadline while you're still preparing, or the day you applied." }));
     } else if (cs === "task"){
       wrap.appendChild(fRow("Task", fInput("text", { placeholder: "e.g. Update resume" })));
+      wrap.appendChild(el("div", { class: "form-grid" },
+        fRow("Date (optional)", fInput("date", { type: "date" })),
+        fRow("Time (optional)", fInput("time", { type: "time" }))));
     } else {
-      wrap.appendChild(fRow("Follow-up", fInput("text", { placeholder: "e.g. Message Cornell alum" })));
+      wrap.appendChild(fRow("Follow-up or event", fInput("text", { placeholder: "e.g. Coffee chat with a Cornell alum" })));
       wrap.appendChild(fRow("Linked person (optional)", fSelect("personId",
         [{ v: "", l: "— none —" }].concat(state.people.map(function (p){ return { v: p.id, l: p.name }; })), "")));
+      wrap.appendChild(el("div", { class: "form-grid" },
+        fRow("Date (optional)", fInput("date", { type: "date" })),
+        fRow("Time (optional)", fInput("time", { type: "time" }))));
     }
   }
   else if (type === "person"){
@@ -2172,9 +2198,9 @@ function submitAdd(){
         cr.applications.push(app(val.company, val.role || "", val.date || "", val.status || "Interested"));
         route = { k: "career", tab: "applications" };
       } else if (cs === "task"){ if (!val.text) return warn();
-        cr.tasks.push(mk(val.text)); route = { k: "career", tab: "tasks" };
+        cr.tasks.push(dat(val.text, val.date || "", val.time || "")); route = { k: "career", tab: "tasks" };
       } else { if (!val.text) return warn();
-        cr.networking.push({ id: uid(), text: val.text, done: false, personId: val.personId || "" });
+        cr.networking.push({ id: uid(), text: val.text, done: false, personId: val.personId || "", date: val.date || "", time: val.time || "" });
         route = { k: "career", tab: "networking" };
       }
     }
