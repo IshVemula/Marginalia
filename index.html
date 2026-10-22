@@ -601,6 +601,8 @@ var lastSaved = "";                     // data last confirmed in the cloud
 var queued = "";                        // data waiting to upload
 var saveTimer = null;
 var inflight = false;
+var rev = null;                         // version of the cloud row we last saw (null = no row yet)
+var pullTimer = null;
 
 function dataOnly(s){ var c = {}; for (var k in s) if (k !== "ui") c[k] = s[k]; return c; }
 function validState(p){
@@ -628,9 +630,13 @@ function showBanner(msg){
 
 /* Turn a Supabase/PostgREST error into something that says what to do about it. */
 var GRANT_SQL = "grant select, insert, update on public.app_state to authenticated;";
+function friendly(err){ var e = new Error(friendlyError(err)); e.friendly = true; return e; }
 function friendlyError(err){
+  if (err && err.friendly) return err.message;
   var msg = (err && err.message) || "Unknown error";
   var code = (err && err.code) || "";
+  if (code === "42703" || /column .*rev/i.test(msg))
+    return "Your database needs a one-time update. In Supabase open SQL Editor and run supabase/002_add_rev.sql.";
   if (code === "42501" || /permission denied/i.test(msg))
     return "Your database is missing permission for signed-in users. In Supabase open SQL Editor, run: " + GRANT_SQL;
   if (code === "42P01" || code === "PGRST205" || /could not find the table|does not exist/i.test(msg))
@@ -653,45 +659,158 @@ function save(){
   saveTimer = setTimeout(flush, 700);
 }
 
+/* ---- merging: combine this device's changes with changes saved elsewhere (another device, or
+   Claude through the MCP server), item by item, so neither side's edits are thrown away. ---- */
+function canon(v){
+  if (Array.isArray(v)) return "[" + v.map(canon).join(",") + "]";
+  if (v && typeof v === "object")
+    return "{" + Object.keys(v).sort().map(function (k){ return JSON.stringify(k) + ":" + canon(v[k]); }).join(",") + "}";
+  return JSON.stringify(v === undefined ? null : v);
+}
+function same(a, b){ return canon(a) === canon(b); }
+function isObj(v){ return !!v && typeof v === "object" && !Array.isArray(v); }
+function idList(v){
+  return Array.isArray(v) && (v.length === 0 || v.every(function (x){ return isObj(x) && x.id != null; }));
+}
+function mergeById(B, L, R){
+  var index = function (a){ var m = {}; a.forEach(function (x){ m[x.id] = x; }); return m; };
+  var b = index(B), r = index(R), out = [], seen = {};
+  L.forEach(function (item){
+    seen[item.id] = 1;
+    if (item.id in r) out.push(merge3(b[item.id], item, r[item.id]));
+    else if (item.id in b){ if (!same(b[item.id], item)) out.push(item); }   // deleted elsewhere: drop it unless edited here
+    else out.push(item);                                                       // added here
+  });
+  R.forEach(function (item){
+    if (seen[item.id]) return;
+    if (item.id in b){ if (!same(b[item.id], item)) out.push(item); }         // deleted here: keep only if edited elsewhere
+    else out.push(item);                                                       // added elsewhere
+  });
+  return out;
+}
+/* base = what we last synced, local = this device now, remote = what's in the cloud now. */
+function merge3(base, local, remote){
+  if (same(local, remote)) return local;
+  if (same(base, local)) return remote;        // only the cloud changed
+  if (same(base, remote)) return local;        // only this device changed
+  if (isObj(local) && isObj(remote)){
+    var b = isObj(base) ? base : {}, keys = {}, out = {};
+    [local, remote, b].forEach(function (o){ Object.keys(o).forEach(function (k){ keys[k] = 1; }); });
+    Object.keys(keys).forEach(function (k){
+      var m = merge3(b[k], local[k], remote[k]);
+      if (m !== undefined) out[k] = m;
+    });
+    return out;
+  }
+  var L = Array.isArray(local) ? local : [], R = Array.isArray(remote) ? remote : [], B = Array.isArray(base) ? base : [];
+  if ((Array.isArray(local) || Array.isArray(remote)) && idList(L) && idList(R) && idList(B)) return mergeById(B, L, R);
+  return local;                                // both sides changed the same value: this device wins
+}
+
+function applyData(d){
+  var ui = state.ui, dialogOpen = !!(add || edit);
+  state = d;
+  state.ui = ui;
+  if (dialogOpen) closeAdd();                  // an open dialog points at the old data
+}
+
+function fetchRemote(){
+  return sb.from("app_state").select("data,rev").eq("user_id", userId).maybeSingle().then(function (res){
+    if (res.error) throw friendly(res.error);
+    if (!res.data) return null;
+    if (!validState(res.data.data)) throw friendly({ message: "Saved data looks unreadable, so nothing was changed." });
+    return { data: res.data.data, rev: res.data.rev };
+  });
+}
+
 function flush(){
   clearTimeout(saveTimer);
   if (inflight || !sb || !userId || !queued || queued === lastSaved) return Promise.resolve();
   inflight = true;
-  var payload = queued;
-  return sb.from("app_state")
-    .upsert({ user_id: userId, data: JSON.parse(payload), updated_at: new Date().toISOString() })
-    .then(function (res){
-      if (res.error) throw res.error;
-      lastSaved = payload;
-      try { localStorage.removeItem(LEGACY_KEY); } catch (e) {}
-    })
-    .then(function (){
-      inflight = false;
-      if (queued === payload) queued = "";
-      if (queued && queued !== lastSaved){ setSync("saving"); saveTimer = setTimeout(flush, 0); }
-      else setSync("saved");
-    })
-    .catch(function (err){
-      inflight = false;
-      setSync("error");
-      showBanner(friendlyError(err));
-      saveTimer = setTimeout(flush, 5000);
+  var payload = queued, data = JSON.parse(payload);
+  // Only save if the cloud is still at the version we loaded; otherwise merge first.
+  var req = rev == null
+    ? sb.from("app_state").insert({ user_id: userId, data: data }).select("rev")
+    : sb.from("app_state").update({ data: data }).eq("user_id", userId).eq("rev", rev).select("rev");
+  return req.then(function (res){
+    if (res.error && res.error.code === "23505") return "conflict";     // the row was created in the meantime
+    if (res.error) throw res.error;
+    if (!res.data || !res.data.length) return "conflict";               // saved elsewhere since we loaded
+    rev = res.data[0].rev;
+    lastSaved = payload;
+    try { localStorage.removeItem(LEGACY_KEY); } catch (e) {}
+    return "ok";
+  }).then(function (outcome){
+    if (outcome === "conflict") return resolveConflict();
+    inflight = false;
+    if (queued === payload) queued = "";
+    if (queued && queued !== lastSaved){ setSync("saving"); saveTimer = setTimeout(flush, 0); }
+    else setSync("saved");
+  }).catch(function (err){
+    inflight = false;
+    setSync("error");
+    showBanner(friendlyError(err));
+    saveTimer = setTimeout(flush, 5000);
+  });
+}
+
+function resolveConflict(){
+  return fetchRemote().then(function (remote){
+    if (!remote){ rev = null; inflight = false; saveTimer = setTimeout(flush, 0); return; }   // row vanished: recreate it
+    var base = lastSaved ? JSON.parse(lastSaved) : {};
+    var snapshot = JSON.stringify(remote.data);
+    applyData(merge3(base, dataOnly(state), remote.data));
+    rev = remote.rev;
+    lastSaved = snapshot;
+    queued = JSON.stringify(dataOnly(state));
+    inflight = false;
+    if (queued === lastSaved){ queued = ""; setSync("saved"); }
+    else { setSync("saving"); saveTimer = setTimeout(flush, 0); }
+    render();
+  });
+}
+
+/* Pick up changes made elsewhere, but never while you're typing, a dialog is open, or a save is pending. */
+function busy(){
+  var a = document.activeElement;
+  return inflight || !!queued || !!document.querySelector(".overlay") ||
+    !!(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.closest("#pane"));
+}
+function pull(){
+  if (!sb || !userId || !state || busy()) return;
+  sb.from("app_state").select("rev").eq("user_id", userId).maybeSingle().then(function (res){
+    if (res.error || !res.data || res.data.rev === rev || busy()) return null;
+    return fetchRemote().then(function (remote){
+      if (!remote || busy()) return;
+      var snapshot = JSON.stringify(remote.data);
+      applyData(remote.data);
+      rev = remote.rev;
+      lastSaved = snapshot;
+      render();
+      setSync("saved");
     });
+  }).catch(function (){ /* try again on the next tick */ });
+}
+function startPolling(){
+  clearInterval(pullTimer);
+  pullTimer = setInterval(function (){ if (document.visibilityState === "visible") pull(); }, 20000);
 }
 document.addEventListener("visibilitychange", function (){
-  if (document.visibilityState === "hidden") flush();
+  if (document.visibilityState === "hidden") flush(); else pull();
 });
+window.addEventListener("focus", pull);
 
 /* Never writes unless the read succeeded, so a failed load can't overwrite saved data. */
 function loadRemote(){
-  return sb.from("app_state").select("data").eq("user_id", userId).maybeSingle().then(function (res){
-    if (res.error) throw new Error(friendlyError(res.error));
-    if (res.data){
-      if (!validState(res.data.data)) throw new Error("Saved data looks unreadable, so nothing was changed.");
-      lastSaved = JSON.stringify(res.data.data);
-      return res.data.data;
+  return fetchRemote().then(function (remote){
+    if (remote){
+      lastSaved = JSON.stringify(remote.data);
+      rev = remote.rev;
+      return remote.data;
     }
     // First sign-in: nothing saved yet. Carry over this browser's old data if any, else start with examples.
+    rev = null;
+    lastSaved = "";
     var local = null;
     try { local = JSON.parse(localStorage.getItem(LEGACY_KEY) || "null"); } catch (e) {}
     return dataOnly(validState(local) ? local : seed());
@@ -1811,6 +1930,7 @@ function enter(user){
     appRoot.hidden = false;
     render();
     setSync("saved");
+    startPolling();
   }).catch(function (ex){
     state = null;
     showFatal((ex && ex.message) || "Check your connection and try again.");
@@ -1823,7 +1943,8 @@ function signOut(){
 
 function leave(){
   clearTimeout(saveTimer);
-  state = null; userId = null; lastSaved = ""; queued = ""; inflight = false;
+  clearInterval(pullTimer);
+  state = null; userId = null; lastSaved = ""; queued = ""; inflight = false; rev = null;
   try { localStorage.removeItem(LEGACY_KEY); } catch (e) {}
   showLogin();
 }

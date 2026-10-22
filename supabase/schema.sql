@@ -10,6 +10,9 @@ create table if not exists public.app_state (
   updated_at timestamptz not null default now()
 );
 
+-- Version number and the trigger that bumps it live in 002_add_rev.sql. Run that
+-- file right after this one (it is also safe on a table that already exists).
+
 alter table public.app_state enable row level security;
 
 revoke all on public.app_state from anon;
