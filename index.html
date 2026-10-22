@@ -310,6 +310,8 @@
   }
 
   @media (max-width: 780px) {
+    .class-row { flex-wrap: wrap; gap: 2px 12px; }
+    .class-time { width: auto; }
     .app { padding: 30px 18px 90px; }
     .shell { grid-template-columns: 1fr; gap: 24px; }
     .nav { position: static; flex-direction: row; flex-wrap: wrap; gap: 6px; }
@@ -335,6 +337,23 @@
   .row-text.editable:hover { text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
   .head-actions { display: flex; gap: 14px; align-items: center; padding-bottom: 4px; }
   .head-actions .btn-ghost { font-size: 13px; padding: 4px 0; }
+  .class-box { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px 8px; margin-bottom: 28px; }
+  .class-box-head { display: flex; align-items: center; gap: 9px; margin-bottom: 4px; }
+  .class-box-head .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c-acad); flex: none; }
+  .class-box-head .lbl { font-size: 11px; font-weight: 600; letter-spacing: 0.13em; text-transform: uppercase; color: var(--muted); }
+  .class-day { font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); margin: 10px 0 2px; }
+  .class-row { display: flex; align-items: baseline; gap: 14px; width: 100%; border: 0; background: transparent; font: inherit; color: var(--ink); text-align: left; padding: 5px 4px; margin: 0 -4px; cursor: pointer; border-radius: 4px; transition: background .12s ease; }
+  .class-row:hover { background: var(--sink); }
+  .class-time { font-family: var(--font-mono); font-size: 12px; color: var(--muted); flex: none; width: 152px; font-variant-numeric: tabular-nums; }
+  .class-name { flex: 1; min-width: 0; }
+  .class-place { font-size: 12.5px; color: var(--muted); flex: none; }
+  .class-times { margin-top: 12px; display: flex; flex-direction: column; gap: 3px; }
+  .ct-row { display: flex; align-items: baseline; gap: 4px 12px; flex-wrap: wrap; }
+  .ct-name { font-weight: 500; }
+  .ct-when { font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); }
+  .ct-next { font-family: var(--font-mono); font-size: 11px; color: var(--faint); }
+  .ct-row:hover .edit, .ct-row:hover .del { opacity: 1; }
+  .class-times .add-link { align-self: flex-start; padding-top: 4px; }
   .days { display: flex; gap: 6px; flex-wrap: wrap; }
   .day { border: 1px solid var(--line-strong); background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; padding: 6px 11px; border-radius: 6px; cursor: pointer; transition: background .12s ease, color .12s ease, border-color .12s ease; }
   .day:hover { border-color: var(--accent); color: var(--ink); }
@@ -460,6 +479,41 @@ function meetsOn(c, iso){
 function nextSession(c){
   for (var i = 0; i < 400; i++){ var iso = offset(i); if (meetsOn(c, iso)) return iso; }
   return "";
+}
+/* Class sessions from `from` to `to` days ahead, worked out from each subject's schedule (never stored one by one). */
+function classSessions(from, to){
+  var out = [];
+  for (var i = from; i <= to; i++){
+    var iso = offset(i);
+    state.academics.subjects.forEach(function (s){
+      (s.schedule || []).forEach(function (c){
+        if (meetsOn(c, iso)) out.push({ date: iso, time: c.start, end: c.end, title: c.title || "Class", location: c.location || "", subject: s });
+      });
+    });
+  }
+  return out.sort(function (a, b){ return (a.date + a.time) < (b.date + b.time) ? -1 : 1; });
+}
+function dayHeading(iso){
+  var n = dayDiff(iso);
+  if (n === 0) return "Today";
+  if (n === 1) return "Tomorrow";
+  var d = new Date(iso + "T00:00:00");
+  return WD[d.getDay()] + " · " + MON[d.getMonth()] + " " + d.getDate();
+}
+/* A small box of classes, kept apart from deadlines. groups = [{ label, items }] */
+function classBox(title, groups){
+  var box = el("section", { class: "class-box", "aria-label": title },
+    el("div", { class: "class-box-head" }, el("span", { class: "dot" }), el("span", { class: "lbl", text: title })));
+  groups.forEach(function (g){
+    if (g.label) box.appendChild(el("div", { class: "class-day", text: g.label }));
+    g.items.forEach(function (x){
+      box.appendChild(el("button", { class: "class-row", type: "button", onclick: function (){ go({ k: "subject", id: x.subject.id }); } },
+        el("span", { class: "class-time", text: timeRange(x.time, x.end) }),
+        el("span", { class: "class-name", text: x.subject.name + (x.title ? " — " + x.title : "") }),
+        x.location ? el("span", { class: "class-place", text: x.location }) : null));
+    });
+  });
+  return box;
 }
 function cls(title, days, start, end, location){
   return { id: uid(), title: title, days: days, start: start, end: end || "", location: location || "", from: "", until: "" };
@@ -1158,6 +1212,7 @@ function pageHead(title, opts){
   h1.appendChild(document.createTextNode(title));
   left.appendChild(h1);
   if (opts.sub) left.appendChild(el("div", { class: "page-sub", text: opts.sub }));
+  if (opts.extra) left.appendChild(opts.extra);
   head.appendChild(left);
   if (opts.actions) head.appendChild(el("div", { class: "head-actions" }, opts.actions));
   return head;
@@ -1232,20 +1287,25 @@ function newClassTime(s){
   var c = { id: uid(), title: "Class", days: [], start: "", end: "", location: "", from: "", until: "" };
   openEdit("Add a class time", c, FIELDS.classtime, { validate: classCheck, add: function (o){ (s.schedule = s.schedule || []).push(o); } });
 }
-function classRow(s, c){
-  function editC(){
-    openEdit("Edit class time", c, FIELDS.classtime, { validate: classCheck, remove: { run: function (){
-      s.schedule = s.schedule.filter(function (x){ return x !== c; });
-    } } });
-  }
-  var next = nextSession(c);
-  return el("li", { class: "row" },
-    el("span", { class: "row-main" },
-      el("span", { class: "row-text editable", text: c.title || "Class", title: "Click to edit", onclick: editC }),
-      el("span", { class: "row-sub", text: [daysLabel(c.days), timeRange(c.start, c.end), c.location].filter(Boolean).join("  ·  ") })),
-    el("span", { class: "row-meta" }, el("span", { text: next ? "next " + fmtDate(next) : "ended" })),
-    editBtn(editC),
-    delBtn(function (){ mutate(function (){ s.schedule = s.schedule.filter(function (x){ return x !== c; }); }); }));
+function editClass(s, c){
+  openEdit("Edit class time", c, FIELDS.classtime, { validate: classCheck, remove: { run: function (){
+    s.schedule = s.schedule.filter(function (x){ return x !== c; });
+  } } });
+}
+/* A subject's class days, times and place, shown under its title. */
+function classTimes(s){
+  var wrap = el("div", { class: "class-times" });
+  (s.schedule || []).forEach(function (c){
+    var next = nextSession(c);
+    wrap.appendChild(el("div", { class: "ct-row" },
+      el("span", { class: "ct-name", text: c.title || "Class" }),
+      el("span", { class: "ct-when", text: [daysLabel(c.days), timeRange(c.start, c.end), c.location].filter(Boolean).join("  ·  ") }),
+      el("span", { class: "ct-next", text: next ? "next " + fmtDate(next) : "ended" }),
+      editBtn(function (){ editClass(s, c); }),
+      delBtn(function (){ mutate(function (){ s.schedule = s.schedule.filter(function (x){ return x !== c; }); }); })));
+  });
+  wrap.appendChild(addLink((s.schedule || []).length ? "Add another class time" : "Add class times (days, hours, room)", function (){ newClassTime(s); }));
+  return wrap;
 }
 function subjectRemoveRun(s){
   return function (){
@@ -1265,7 +1325,7 @@ function viewSubject(pane, r){
   if (!s) return go({ k: "academics" });
   pane.appendChild(pageHead(s.name, {
     crumb: [{ label: "Academics", go: { k: "academics" } }, { label: state.academics.semester }],
-    swatch: s.color, sub: s.professor || "",
+    swatch: s.color, sub: s.professor || "", extra: classTimes(s),
     actions: [
       el("button", { class: "btn-ghost", type: "button", text: "Edit subject", onclick: function (){ editSubject(s); } }),
       el("button", { class: "btn-ghost", type: "button", style: { color: "var(--overdue)" }, text: "Delete subject", onclick: function (){ removeSubject(s); } })
@@ -1288,13 +1348,6 @@ function viewSubject(pane, r){
         onclick: function (){ mutate(function (){ s.deadlines = s.deadlines.filter(function (x){ return x !== d; }); }); } })
     );
   })), addLink("Add a deadline", function (){ openAddPreset("academic", { subject: s.id, kind: "deadline" }); })]));
-
-  pane.appendChild(section("Class Schedule", null, [
-    (s.schedule || []).length
-      ? rowsList(s.schedule.map(function (c){ return classRow(s, c); }))
-      : el("p", { class: "empty", text: "No class times yet. Add the days and hours this class meets and it will show up on Today and Upcoming." }),
-    addLink("Add a class time", function (){ newClassTime(s); })
-  ]));
 
   pane.appendChild(section("Things To Do", null, [
     rowsList(s.todos.map(function (t){
@@ -1637,14 +1690,6 @@ function eachDated(cb){
   state.academics.subjects.forEach(function (s){
     s.deadlines.forEach(function (d){ if (d.status !== "Done") cb({ date: d.date, time: d.time, title: s.name + " — " + d.title, area: "academics", toggle: function (){ d.status = "Done"; }, open: { k: "subject", id: s.id } }); });
     s.milestones.forEach(function (m){ if (!m.done) cb({ date: m.date, time: "", title: s.name + " — " + m.title, area: "academics", toggle: function (){ m.done = true; }, open: { k: "subject", id: s.id } }); });
-    // repeating class times: today and the coming week (computed, never stored one by one)
-    (s.schedule || []).forEach(function (c){
-      for (var i = 0; i <= 7; i++){
-        var iso = offset(i);
-        if (meetsOn(c, iso)) cb({ date: iso, time: c.start, end: c.end, session: true, toggle: null, area: "academics",
-          title: s.name + " — " + (c.title || "Class") + (c.location ? " · " + c.location : ""), open: { k: "subject", id: s.id } });
-      }
-    });
   });
   state.lifeadmin.documents.forEach(function (d){ if (d.status !== "Complete" && d.deadline) cb({ date: d.deadline, time: "", title: d.name, area: "lifeadmin", toggle: function (){ d.status = "Complete"; }, open: { k: "lifeadmin", tab: "documents" } }); });
   state.lifeadmin.bills.forEach(function (b){ if (!b.paid) cb({ date: b.due, time: "", title: b.name + " — $" + b.amount, area: "lifeadmin", toggle: function (){ b.paid = true; }, open: { k: "lifeadmin", tab: "bills" } }); });
@@ -1668,6 +1713,8 @@ function undatedFill(area){
 /* ============ TODAY ============ */
 function viewToday(pane){
   pane.appendChild(pageHead("Today", { sub: "Due today and overdue, across every area." }));
+  var classesToday = classSessions(0, 0);
+  if (classesToday.length) pane.appendChild(classBox("Classes today", [{ label: "", items: classesToday }]));
   var byArea = {};
   eachDated(function (e){
     if (dayDiff(e.date) <= 0){ (byArea[e.area] = byArea[e.area] || []).push(e); }
@@ -1675,9 +1722,7 @@ function viewToday(pane){
   var order = ["academics","lifeadmin","career","people","personal"];
   var shown = 0;
   order.forEach(function (area){
-    var all = (byArea[area] || []).sort(function (a, b){ return (a.date || "") < (b.date || "") ? -1 : 1; });
-    var sessions = all.filter(function (e){ return e.session; }).sort(function (a, b){ return a.time < b.time ? -1 : 1; });
-    var items = all.filter(function (e){ return !e.session; });
+    var items = (byArea[area] || []).sort(function (a, b){ return (a.date || "") < (b.date || "") ? -1 : 1; });
     if (items.length < 2 && area !== "people"){
       undatedFill(area).slice(0, 2 - items.length).forEach(function (f){ items.push(f); });
     }
@@ -1685,7 +1730,7 @@ function viewToday(pane){
       var need = state.lifeadmin.groceries.filter(function (g){ return !g.done; }).length;
       if (need) items.push({ title: "Buy groceries · " + need + " to get", open: { k: "lifeadmin", tab: "groceries" } });
     }
-    items = sessions.concat(items.slice(0, 4));
+    items = items.slice(0, 4);
     if (!items.length) return;
     shown += items.length;
     var wrap = el("div", { class: "today-area" });
@@ -1695,7 +1740,7 @@ function viewToday(pane){
     wrap.appendChild(head);
     var ul = el("ul", { class: "rows" });
     items.forEach(function (e){
-      var meta = e.session ? el("span", { text: timeRange(e.time, e.end) }) : e.date ? metaDate(e.date, e.time) : null;
+      var meta = e.date ? metaDate(e.date, e.time) : null;
       if (e.toggle){
         ul.appendChild(checkRow({ text: e.title, meta: meta, onToggle: function (){ mutate(e.toggle); } }));
       } else {
@@ -1708,12 +1753,21 @@ function viewToday(pane){
     wrap.appendChild(ul);
     pane.appendChild(wrap);
   });
-  if (!shown) pane.appendChild(el("p", { class: "empty", text: "Nothing due today. Check Upcoming for what's next." }));
+  if (!shown) pane.appendChild(el("p", { class: "empty", text: classesToday.length
+    ? "No deadlines or tasks due today."
+    : "Nothing due today. Check Upcoming for what's next." }));
 }
 
 /* ============ UPCOMING ============ */
 function viewUpcoming(pane){
   pane.appendChild(pageHead("Upcoming", { sub: "Everything with a date, in order." }));
+  var coming = classSessions(0, 7), classDays = [];
+  coming.forEach(function (x){
+    var last = classDays[classDays.length - 1];
+    if (last && last.date === x.date) last.items.push(x);
+    else classDays.push({ date: x.date, label: dayHeading(x.date), items: [x] });
+  });
+  if (coming.length) pane.appendChild(classBox("Classes this week", classDays));
   var buckets = { overdue: [], today: [], tomorrow: [], week: [], later: [] };
   eachDated(function (e){
     var n = dayDiff(e.date);
@@ -1742,7 +1796,7 @@ function viewUpcoming(pane){
     b.appendChild(ul);
     pane.appendChild(b);
   });
-  if (!["overdue","today","tomorrow","week","later"].some(function (k){ return buckets[k].length; }))
+  if (!coming.length && !["overdue","today","tomorrow","week","later"].some(function (k){ return buckets[k].length; }))
     pane.appendChild(el("p", { class: "empty", text: "Nothing scheduled. Add something with the + button." }));
 }
 
