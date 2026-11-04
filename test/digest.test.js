@@ -134,3 +134,32 @@ test('the planner is swappable: the digest takes any planner with the same shape
   assert.deepEqual(Object.keys(PLANNERS), ['simple']);
   assert.throws(() => buildDigest(emptyWorkspace(), TODAY, { planner: 'ranked' }), /Unknown digest planner/);
 });
+
+test('dated career tasks and networking items show up like on the site; undated and finished ones do not', () => {
+  const data = emptyWorkspace();
+  data.people = [{ id: 'p3', name: 'James Whitfield', next: '', tasks: [] }];
+  data.career.tasks = [
+    { id: 'ct1', text: 'Update resume', done: false, date: '2026-10-22', time: '15:00' },          // due today, with a time
+    { id: 'ct2', text: 'Practice case interview', done: false, date: '2026-10-20', time: '' },     // overdue
+    { id: 'ct3', text: 'Update portfolio', done: false },                                          // no date: not a dated item
+    { id: 'ct4', text: 'Cover letter', done: true, date: '2026-10-22', time: '' },                 // finished
+    { id: 'ct5', text: 'Old task with no date fields at all', done: false },
+  ];
+  data.career.networking = [
+    { id: 'n1', text: 'Coffee chat', done: false, personId: 'p3', date: '2026-10-23', time: '11:00' },   // tomorrow, linked to a person
+    { id: 'n2', text: 'Send thank-you note', done: false, personId: '', date: '2026-10-24', time: '' },  // two days out, no person
+    { id: 'n3', text: 'Undated follow-up', done: false, personId: 'p3', date: '', time: '' },
+    { id: 'n4', text: 'Done event', done: true, personId: '', date: '2026-10-23', time: '' },
+  ];
+  const digest = buildDigest(data, TODAY);
+  assert.deepEqual(rowsOf(section(digest, 'today')).map((r) => [r.text, r.lead]), [['Update resume', '3:00 PM']]);
+  assert.deepEqual(rowsOf(section(digest, 'overdue')).map((r) => [r.text, r.tag]), [['Practice case interview', '2 days overdue']]);
+  assert.deepEqual(rowsOf(section(digest, 'soon')).map((r) => [r.lead, r.text, r.tag]), [
+    ['Fri · 11:00 AM', 'Coffee chat — James Whitfield', 'Career'],
+    ['Sat', 'Send thank-you note', 'Career'],
+  ]);
+  const everything = digest.sections.flatMap((sec) => rowsOf(sec)).map((r) => r.text).join('|');
+  for (const hidden of ['portfolio', 'Cover letter', 'Undated follow-up', 'Done event', 'no date fields']) {
+    assert.ok(!everything.includes(hidden), `${hidden} should not appear`);
+  }
+});
