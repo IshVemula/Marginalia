@@ -1,0 +1,9 @@
+{
+  "name": "marginalia",
+  "private": true,
+  "description": "Marginalia: a personal planner (static site) plus a morning email digest (Vercel cron function).",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "cron": "node scripts/cron-entries.js"
+  }
+}
