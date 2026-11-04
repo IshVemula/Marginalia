@@ -126,9 +126,23 @@ curl -H "Authorization: Bearer $CRON_SECRET" "https://YOUR-SITE.vercel.app/api/m
 You can also run a cron job on demand from the Vercel dashboard (Settings -> Cron Jobs) or the Vercel CLI
 (`vercel crons`).
 
-**If your site uses Vercel Deployment Protection** (the Vercel login screen in front of the site), check that cron
-calls get through: use the run-on-demand option once after deploying and look at the function logs. If it is
-blocked, add a Protection Bypass for Automation.
+**If your site address sends you to a Vercel login page** (Vercel Authentication / Deployment Protection), a
+terminal `curl` is redirected the same way, so the commands above won't work as written. Pick one:
+
+- **Make the production address public.** In Vercel -> Settings -> Deployment Protection, use *Standard Protection*.
+  This is safe for the digest: its endpoint still refuses everything without `CRON_SECRET` (401), and your planner
+  is still behind your Supabase login. Only the login page itself becomes visible to others.
+- **Or keep the protection and add a bypass for your own commands.** In the same settings page create a
+  *Protection Bypass for Automation* secret, then add `-H "x-vercel-protection-bypass: $BYPASS_SECRET"` to the
+  `curl` commands (or use `vercel curl`).
+
+**Check that Vercel's own cron calls get through.** Vercel's docs don't say whether cron requests are let past
+Deployment Protection (they only say cron makes a GET request to your production URL). After deploying, run a cron job
+once on demand (Settings -> Cron Jobs) and open its function logs. A log line like `{"digest":{"event":"sent"...}}` or
+`"skipped"` means it got through; no log entry at all means the request was blocked, and making the production address
+public (the first option) fixes it.
+
+**Environment variables only apply to deployments made after you add them.** If you add or change one, redeploy.
 
 ### Seeing what happened
 Each day gets one row in `digest_log` (status `sent`, `failed` with the reason, or `failed` marked missed).
