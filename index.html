@@ -574,6 +574,9 @@ function weekData(subjects, days){
     (s.milestones || []).forEach(function (m){
       if (!m.done && due[m.date]) due[m.date].push({ s: s, title: m.title || "Milestone", detail: "Milestone" });
     });
+    (s.todos || []).forEach(function (x){
+      if (!x.done && x.date && due[x.date]) due[x.date].push({ s: s, title: x.text || "To-do", detail: ["To-do", x.time ? fmtTime(x.time) : ""].filter(Boolean).join(" · ") });
+    });
   });
   return { classes: classes, due: due };
 }
@@ -1130,6 +1133,7 @@ var FIELDS = {
   deadline:    [F("title", "Title"), F("type", "Type", "select", DEADLINE_TYPES, { half: true }), F("status", "Status", "select", DEADLINE_STATUS, { half: true }),
                 F("date", "Due date", "date", null, { half: true }), F("time", "Due time", "time", null, { half: true })],
   todo:        [F("text", "Task")],
+  subjecttodo: [F("text", "Task"), F("date", "Date (optional)", "date", null, { half: true }), F("time", "Time (optional)", "time", null, { half: true })],
   careertask:  [F("text", "Task"), F("date", "Date", "date", null, { half: true }), F("time", "Time", "time", null, { half: true })],
   milestone:   [F("title", "Milestone"), F("date", "Date", "date")],
   document:    [F("name", "Document / task name"), F("deadline", "Deadline", "date", null, { half: true }), F("status", "Status", "select", DOC_STATUS, { half: true }),
@@ -1516,15 +1520,16 @@ function viewSubject(pane, r){
   })), addLink("Add a deadline", function (){ openAddPreset("academic", { subject: s.id, kind: "deadline" }); })]));
 
   pane.appendChild(section("Things To Do", null, [
-    rowsList(s.todos.map(function (t){
+    rowsList(s.todos.slice().sort(byWhen).map(function (t){
       return checkRow({
         text: t.text, done: t.done,
-        onEdit: function (){ openEdit("Edit to-do", t, FIELDS.todo); },
+        meta: t.date || t.time ? metaDate(t.date, t.time) : null,
+        onEdit: function (){ openEdit("Edit to-do", t, FIELDS.subjecttodo); },
         onToggle: function (){ mutate(function (){ t.done = !t.done; }); },
         onDelete: function (){ mutate(function (){ s.todos = s.todos.filter(function (x){ return x !== t; }); }); }
       });
     })),
-    inlineAdd("subtodo-" + s.id, "Add a to-do — e.g. email professor", function (v){ s.todos.push(mk(v)); })
+    inlineAdd("subtodo-" + s.id, "Add a to-do — e.g. email professor (click Edit to set a date)", function (v){ s.todos.push(mk(v)); })
   ]));
 
   pane.appendChild(section("Major Milestones", null, [
@@ -1861,6 +1866,11 @@ function eachDated(cb){
     s.deadlines.forEach(function (d){ if (d.status !== "Done") cb({ date: d.date, time: d.time, title: s.name + " — " + d.title, area: "academics", toggle: function (){ d.status = "Done"; }, open: { k: "subject", id: s.id } }); });
     s.milestones.forEach(function (m){ if (!m.done) cb({ date: m.date, time: "", title: s.name + " — " + m.title, area: "academics", toggle: function (){ m.done = true; }, open: { k: "subject", id: s.id } }); });
   });
+  state.academics.subjects.forEach(function (s){          // dated to-dos under a subject, like deadlines
+    (s.todos || []).forEach(function (t){
+      if (!t.done && t.date) cb({ date: t.date, time: t.time, title: s.name + " — " + t.text, area: "academics", toggle: function (){ t.done = true; }, open: { k: "subject", id: s.id } });
+    });
+  });
   state.lifeadmin.documents.forEach(function (d){ if (d.status !== "Complete" && d.deadline) cb({ date: d.deadline, time: "", title: d.name, area: "lifeadmin", toggle: function (){ d.status = "Complete"; }, open: { k: "lifeadmin", tab: "documents" } }); });
   state.lifeadmin.bills.forEach(function (b){ if (!b.paid) cb({ date: b.due, time: "", title: b.name + " — $" + b.amount, area: "lifeadmin", toggle: function (){ b.paid = true; }, open: { k: "lifeadmin", tab: "bills" } }); });
   state.lifeadmin.appointments.forEach(function (a){ if (!a.done && a.date) cb({ date: a.date, time: a.time, title: a.title, area: "lifeadmin", toggle: function (){ a.done = true; }, open: { k: "lifeadmin", tab: "appointments" } }); });
@@ -1878,7 +1888,7 @@ function eachDated(cb){
 }
 function undatedFill(area){
   if (area === "academics") return flatten(state.academics.subjects.map(function (s){
-    return s.todos.filter(function (t){ return !t.done; }).map(function (t){ return { title: t.text, toggle: function (){ t.done = true; }, open: { k: "subject", id: s.id } }; });
+    return s.todos.filter(function (t){ return !t.done && !t.date; }).map(function (t){ return { title: t.text, toggle: function (){ t.done = true; }, open: { k: "subject", id: s.id } }; });
   }));
   if (area === "lifeadmin") return state.lifeadmin.home.filter(function (t){ return !t.done; }).map(function (t){ return { title: t.text, toggle: function (){ t.done = true; }, open: { k: "lifeadmin", tab: "home" } }; });
   if (area === "career") return state.career.tasks.concat(state.career.networking).filter(function (t){ return !t.done && !t.date; }).map(function (t){ return { title: t.text, toggle: function (){ t.done = true; }, open: { k: "career", tab: "tasks" } }; });
@@ -2059,6 +2069,9 @@ function formFor(type){
         fRow("Due time", fInput("time", { type: "time" }))));
     } else if (kind === "todo"){
       wrap.appendChild(fRow("To-do", fInput("title", { placeholder: "e.g. Read Chapter 4" })));
+      wrap.appendChild(el("div", { class: "form-grid" },
+        fRow("Date (optional)", fInput("date", { type: "date" })),
+        fRow("Time (optional)", fInput("time", { type: "time" }))));
     } else {
       wrap.appendChild(fRow("Milestone", fInput("title", { placeholder: "e.g. Final Project" })));
       wrap.appendChild(fRow("Date", fInput("date", { type: "date" })));
@@ -2169,7 +2182,7 @@ function submitAdd(){
           s.deadlines.push({ id: uid(), title: val.title, type: val.dtype || "Assignment",
             date: val.date || "", time: val.time || "", status: "Not started" });
         } else if (kind === "todo"){
-          s.todos.push(mk(val.title));
+          s.todos.push(dat(val.title, val.date || "", val.time || ""));
         } else {
           s.milestones.push(ms(val.title, val.date || ""));
         }
