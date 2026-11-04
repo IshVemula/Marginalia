@@ -163,3 +163,20 @@ test('dated career tasks and networking items show up like on the site; undated 
     assert.ok(!everything.includes(hidden), `${hidden} should not appear`);
   }
 });
+
+test('dated to-dos under a subject show up like on the site; undated and finished ones do not', () => {
+  const data = emptyWorkspace();
+  data.academics.subjects = [{ id: 'da', name: 'Data Analytics', schedule: [], deadlines: [], milestones: [], todos: [
+    { id: 't1', text: 'Email the TA', done: false, date: '2026-10-22', time: '' },                   // due today
+    { id: 't2', text: 'Re-check rubric', done: false, date: '2026-10-20', time: '' },                // overdue
+    { id: 't3', text: 'Grade projects', done: false, date: '2026-10-24', time: '17:00' },            // in two days
+    { id: 't4', text: 'Read the syllabus', done: false },                                            // no date fields (an older to-do)
+    { id: 't5', text: 'Done already', done: true, date: '2026-10-22', time: '' },
+  ] }];
+  const digest = buildDigest(data, TODAY);
+  assert.deepEqual(rowsOf(section(digest, 'today')).map((r) => r.text), ['Data Analytics — Email the TA']);
+  assert.deepEqual(rowsOf(section(digest, 'overdue')).map((r) => [r.text, r.tag]), [['Data Analytics — Re-check rubric', '2 days overdue']]);
+  assert.deepEqual(rowsOf(section(digest, 'soon')).map((r) => [r.lead, r.text]), [['Sat · 5:00 PM', 'Data Analytics — Grade projects']]);
+  const everything = digest.sections.flatMap((sec) => rowsOf(sec)).map((r) => r.text).join('|');
+  assert.ok(!everything.includes('syllabus') && !everything.includes('Done already'));
+});
