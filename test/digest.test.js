@@ -24,23 +24,22 @@ test('classes today: only the ones that meet today, in start order, with room', 
 
 test('overdue: grouped by area in the site\'s order, oldest first, with how late', () => {
   const overdue = section(buildDigest(sampleWorkspace(), TODAY), 'overdue');
-  assert.deepEqual(labels(overdue), ['Academics', 'Life Admin', 'Career', 'People']);
+  assert.deepEqual(labels(overdue), ['Academics', 'Life Admin', 'Career']);       // People is gone: saved follow-ups never appear
   assert.deepEqual(rowsOf(overdue).map((r) => [r.text, r.tag]), [
     ['Technology Strategy — Reading response 2', '2 days overdue'],
     ['AI Applications — Case Analysis 2', '1 day overdue'],
     ['Rent — $1,450', '2 days overdue'],
     ['Meridian Capital — Summer Analyst', '4 days overdue'],
-    ['Follow up: Ricardo Puga', '1 day overdue'],
   ]);
   assert.ok(rowsOf(overdue).every((r) => r.tone === 'bad'));
 });
 
 test('due today: grouped by area, skipping done, paid and complete items', () => {
   const today = section(buildDigest(sampleWorkspace(), TODAY), 'today');
-  assert.deepEqual(labels(today), ['Academics', 'Life Admin', 'Career', 'People', 'Personal']);
+  assert.deepEqual(labels(today), ['Academics', 'Life Admin', 'Career', 'Personal']);
   const texts = rowsOf(today).map((r) => r.text);
   assert.deepEqual(texts, [
-    'AI Applications — Quiz 1', 'Electricity — $64.50', 'Dentist', 'Google — APM Intern', 'Follow up: Anika Rao', 'Gym',
+    'AI Applications — Quiz 1', 'Electricity — $64.50', 'Dentist', 'Google — APM Intern', 'Gym',
   ]);
   for (const hidden of ['Already handed in', 'Health waiver', 'Spotify', 'Played already']) {
     assert.ok(!texts.some((t) => t.includes(hidden)), `${hidden} should not appear`);
@@ -61,13 +60,12 @@ test('coming up: tomorrow through three days ahead, in date order, tagged by are
 test('on your radar: nothing is repeated, waiting applications show how long, max three each', () => {
   const digest = buildDigest(sampleWorkspace(), TODAY);
   const radar = section(digest, 'radar');
-  assert.deepEqual(labels(radar), ['Bills due soon', 'Waiting to hear back', 'People to follow up with']);
-  const [bills, waiting, people] = radar.groups;
+  assert.deepEqual(labels(radar), ['Bills due soon', 'Waiting to hear back']);
+  const [bills, waiting] = radar.groups;
   assert.deepEqual(bills.rows.map((r) => r.text), ['Phone — $35']);                    // Wi-Fi is already under "coming up"
   assert.deepEqual(waiting.rows.map((r) => [r.text, r.tag]), [
     ['Databricks — APM', '7d'], ['Northwind Labs — PM Intern', '2d'], ['Bridgewater — Associate', ''],
   ]);
-  assert.deepEqual(people.rows.map((r) => r.text), ['James Whitfield']);               // Ricardo and Anika are overdue / due today above
 
   const all = digest.sections.flatMap((s) => (s.id === 'radar' ? [] : rowsOf(s))).map((r) => r.text);
   assert.ok(!all.some((t) => t.startsWith('Phone')) && !all.includes('James Whitfield'));
@@ -155,7 +153,7 @@ test('dated career tasks and networking items show up like on the site; undated 
   assert.deepEqual(rowsOf(section(digest, 'today')).map((r) => [r.text, r.lead]), [['Update resume', '3:00 PM']]);
   assert.deepEqual(rowsOf(section(digest, 'overdue')).map((r) => [r.text, r.tag]), [['Practice case interview', '2 days overdue']]);
   assert.deepEqual(rowsOf(section(digest, 'soon')).map((r) => [r.lead, r.text, r.tag]), [
-    ['Fri · 11:00 AM', 'Coffee chat — James Whitfield', 'Career'],
+    ['Fri · 11:00 AM', 'Coffee chat', 'Career'],       // the saved link to a person is ignored
     ['Sat', 'Send thank-you note', 'Career'],
   ]);
   const everything = digest.sections.flatMap((sec) => rowsOf(sec)).map((r) => r.text).join('|');

@@ -569,7 +569,7 @@ function weekData(subjects, days){
   });
   var chosen = {};
   subjects.forEach(function (s){ chosen[s.id] = s; });
-  Standard.standardItems(state).forEach(function (i){          // deadlines, milestones, events and dated to-dos in these spaces
+  Standard.standardItems(visibleData()).forEach(function (i){          // deadlines, milestones, events and dated to-dos in these spaces
     if (!i.dueCounts || !chosen[i.spaceId] || !due[i.date]) return;
     due[i.date].push({ s: chosen[i.spaceId], title: i.title || i.label,
       detail: [i.extra.type || i.label, i.time ? fmtTime(i.time) : ""].filter(Boolean).join(" · ") });
@@ -679,7 +679,6 @@ var AREAS = {
   academics: { label: "Academics", color: "var(--c-acad)" },
   lifeadmin: { label: "Life Admin", color: "var(--c-admin)" },
   career:    { label: "Career",    color: "var(--c-career)" },
-  people:    { label: "People",    color: "var(--c-people)" },
   personal:  { label: "Personal",  color: "var(--c-personal)" }
 };
 var DEADLINE_TYPES = ["Assignment","Exam","Project","Presentation","Reading","Quiz"];
@@ -787,20 +786,7 @@ function seed(){
       networking: [ net("Thank-you note after the info session", offset(1), ""), net("Fall Career Fair", offset(8), "10:00"),
                     net("Cornell alumni mixer", offset(5), "18:00") ]
     },
-    people: [
-      person("Ricardo Puga", "Cornell", "Professor", "Independent study advisor", offset(-8), offset(-1),
-        "Wants a short progress note every week.", ["Send grant requirements","Ask about internship deliverable","Follow up Friday"]),
-      person("Anika Rao", "Meridian Capital", "Associate", "Alumni", offset(-14), offset(0),
-        "Cornell Tech alum, met at the info session. Offered to review my resume.", ["Send updated resume"]),
-      person("James Whitfield", "Northwind Labs", "Recruiter", "Recruiter", offset(-2), offset(5),
-        "Reached out on LinkedIn about the PM internship.", ["Reply with availability"]),
-      person("Dr. Lena Cho", "Cornell", "Faculty Mentor", "Mentor", offset(-19), offset(9),
-        "First-year advisor. Check in about once a month.", []),
-      person("Priya Menon", "—", "Classmate", "Classmate", offset(-1), "",
-        "On the AI Applications project team.", ["Share the notebook"]),
-      person("Tomás Herrera", "Rivet", "Product Manager", "Internship manager", offset(-35), offset(17),
-        "Last summer's manager. Said to reach out about full-time.", [])
-    ],
+    people: [],
     personal: {
       recreation: [ dat("Gym", offset(0), "19:00"), dat("Pickup basketball", offset(3), "11:00"),
                     dat("Movie night", offset(4), "20:00"), mk("Finish the woodworking shelf"), mk("Try the new ramen place") ],
@@ -829,10 +815,6 @@ function oneDatePerApplication(d){
 }
 function net(t, d, tm){ return { id: uid(), text: t, done: false, personId: "", date: d || "", time: tm || "" }; }
 function dat(t, d, tm){ return { id: uid(), text: t, done: false, date: d, time: tm }; }
-function person(n, o, r, h, lc, nf, notes, tasks){
-  return { id: uid(), name: n, org: o, role: r, how: h, last: lc, next: nf, notes: notes,
-           tasks: (tasks || []).map(mk) };
-}
 
 /* ============ state ============ */
 /* Data lives in Supabase (one row, owner-only via row-level security). Only the
@@ -1085,9 +1067,6 @@ function go(route){ state.ui.route = route; save(); render(); window.scrollTo(0,
 function subjectById(id){
   return state.academics.subjects.filter(function (s){ return s.id === id; })[0];
 }
-function personById(id){
-  return state.people.filter(function (p){ return p.id === id; })[0];
-}
 
 /* ============ small components ============ */
 /* open items first, dated before undated, earliest first (the sort is stable, so undated items keep their order) */
@@ -1156,21 +1135,16 @@ var FIELDS = {
                 F("location", "Location (optional)"),
                 F("from", "First day (optional)", "date", null, { half: true }), F("until", "Last day (optional)", "date", null, { half: true })]
 };
-function peopleOptions(){
-  return [{ v: "", l: "— no one —" }].concat(state.people.map(function (p){ return { v: p.id, l: p.name }; }));
-}
 function subjecttodoFields(){
-  return [F("text", "Task"), F("personId", "With (optional)", "select", peopleOptions()),
-    F("date", "Date (optional)", "date", null, { half: true }), F("time", "Time (optional)", "time", null, { half: true })];
+  return [F("text", "Task"), F("date", "Date (optional)", "date", null, { half: true }), F("time", "Time (optional)", "time", null, { half: true })];
 }
 function eventFields(){
-  return [F("title", "Event or meeting"), F("personId", "With (optional)", "select", peopleOptions()),
+  return [F("title", "Event or meeting"),
     F("date", "Date", "date", null, { half: true }), F("time", "Starts", "time", null, { half: true }),
     F("endTime", "Ends (optional)", "time", null, { half: true }), F("notes", "Notes", "textarea")];
 }
 function networkingFields(){
-  return [F("text", "Follow-up or event"), F("personId", "Linked person", "select",
-    [{ v: "", l: "— none —" }].concat(state.people.map(function (p){ return { v: p.id, l: p.name }; }))),
+  return [F("text", "Follow-up or event"),
     F("date", "Date", "date", null, { half: true }), F("time", "Time", "time", null, { half: true })];
 }
 
@@ -1340,7 +1314,7 @@ function renderNav(){
   var nav = document.getElementById("nav");
   nav.innerHTML = "";
   var r = state.ui.route;
-  var activeArea = ({ subject: "academics", person: "people" })[r.k] || r.k;
+  var activeArea = ({ subject: "academics" })[r.k] || r.k;
 
   function link(key, opts){
     opts = opts || {};
@@ -1361,7 +1335,6 @@ function renderNav(){
   nav.appendChild(link("academics"));
   nav.appendChild(link("lifeadmin", { route: { k: "lifeadmin", tab: "documents" } }));
   nav.appendChild(link("career", { route: { k: "career", tab: "applications" } }));
-  nav.appendChild(link("people"));
   nav.appendChild(link("personal"));
   nav.appendChild(el("button", { class: "add-open", onclick: openAdd },
     el("span", { class: "plus", text: "+" }), "Add"));
@@ -1380,10 +1353,11 @@ function render(){
   renderNav();
   var pane = document.getElementById("pane");
   pane.innerHTML = "";
+  if (state.ui.route.k === "people" || state.ui.route.k === "person") state.ui.route = { k: "today" };   // that page no longer exists
   var r = state.ui.route;
   var view = ({
     today: viewToday, upcoming: viewUpcoming, academics: viewAcademics, subject: viewSubject,
-    lifeadmin: viewLifeAdmin, career: viewCareer, people: viewPeople, person: viewPerson, personal: viewPersonal
+    lifeadmin: viewLifeAdmin, career: viewCareer, personal: viewPersonal
   })[r.k] || viewToday;
   view(pane, r);
   save();
@@ -1439,7 +1413,6 @@ function rowsList(items){
 
 /* ============ ACADEMICS ============ */
 /* "Course · Dr. Lindqvist": what kind of space, and who runs it. Older data kept the contact as "professor". */
-function personLabel(id){ var p = id && personById(id); return p ? "With " + p.name : null; }
 function spaceSub(s){ return [s.type, s.contact || s.professor].filter(Boolean).join(" · "); }
 function subjectStats(s){
   var openTodos = s.todos.filter(function (t){ return !t.done; }).length;
@@ -1557,7 +1530,6 @@ function viewSubject(pane, r){
     rowsList(s.todos.slice().sort(byWhen).map(function (t){
       return checkRow({
         text: t.text, done: t.done,
-        sub: personLabel(t.personId),
         meta: t.date || t.time ? metaDate(t.date, t.time) : null,
         onEdit: function (){ openEdit("Edit to-do", t, subjecttodoFields()); },
         onToggle: function (){ mutate(function (){ t.done = !t.done; }); },
@@ -1572,7 +1544,7 @@ function viewSubject(pane, r){
     rowsList(s.events.slice().sort(byWhen).map(function (ev){
       function editEv(){ openEdit("Edit event", ev, eventFields(), { remove: { run: function (){ s.events = s.events.filter(function (x){ return x !== ev; }); } } }); }
       return checkRow({
-        text: ev.title, done: ev.done, sub: personLabel(ev.personId),
+        text: ev.title, done: ev.done,
         meta: metaDate(ev.date, ev.time, ev.endTime),
         onEdit: editEv,
         onToggle: function (){ mutate(function (){ ev.done = !ev.done; }); },
@@ -1780,17 +1752,11 @@ function viewCareer(pane, r){
 
   if (tab === "networking"){
     pane.appendChild(el("p", { class: "page-sub", style: { marginTop: 0, marginBottom: "14px" },
-      text: "Reach-outs and events (coffee chats, mixers, career fairs), with an optional date and time. Click a name to open their profile." }));
+      text: "Reach-outs and events (coffee chats, mixers, career fairs), with an optional date and time." }));
     pane.appendChild(rowsList(cr.networking.slice().sort(byWhen).map(function (t){
-      var p = t.personId ? personById(t.personId) : null;
       return checkRow({
         text: t.text, done: t.done,
-        sub: p ? null : undefined,
-        meta: [
-          t.date || t.time ? metaDate(t.date, t.time) : null,
-          p ? el("button", { class: "link-out", style: { border: 0, background: "none", cursor: "pointer" },
-            text: p.name + " ↗", onclick: function (){ go({ k: "person", id: p.id }); } }) : null
-        ],
+        meta: t.date || t.time ? metaDate(t.date, t.time) : null,
         onEdit: function (){ openEdit("Edit follow-up", t, networkingFields()); },
         onToggle: function (){ mutate(function (){ t.done = !t.done; }); },
         onDelete: function (){ mutate(function (){ cr.networking = cr.networking.filter(function (x){ return x !== t; }); }); }
@@ -1798,91 +1764,6 @@ function viewCareer(pane, r){
     })));
     pane.appendChild(inlineAdd("net", "Add a follow-up or event — e.g. coffee chat with a Cornell alum", function (v){ cr.networking.push(net(v, "", "")); }));
   }
-}
-
-/* ============ PEOPLE ============ */
-function viewPeople(pane){
-  pane.appendChild(pageHead("People", { sub: "Who should I remember to reach out to?" }));
-  var soon = [], recent = [];
-  state.people.forEach(function (p){
-    if (p.next && dayDiff(p.next) <= 7) soon.push(p);
-    else if (p.last && dayDiff(p.last) >= -14) recent.push(p);
-  });
-  soon.sort(function (a, b){ return dayDiff(a.next) - dayDiff(b.next); });
-  recent.sort(function (a, b){ return dayDiff(b.last) - dayDiff(a.last); });
-  var everyone = state.people.slice().sort(function (a, b){ return a.name.localeCompare(b.name); });
-
-  function personRow(p, mode){
-    var metaNode;
-    if (mode === "soon") metaNode = (function (){ var s = el("span", { text: "follow up " + fmtDate(p.next) }); if (dayDiff(p.next) < 2) s.className = "overdue"; return s; })();
-    else if (mode === "recent") metaNode = el("span", { text: "contacted " + fmtDate(p.last) });
-    else metaNode = el("span", { style: { color: "var(--faint)" }, text: p.tasks.filter(function (t){ return !t.done; }).length + " open" });
-    return el("li", { class: "row link", onclick: function (){ go({ k: "person", id: p.id }); } },
-      el("span", { class: "check", style: { border: "1.5px solid var(--line-strong)" } }),
-      el("span", { class: "row-main" },
-        el("span", { class: "row-text", text: p.name }),
-        el("span", { class: "row-sub", text: [p.org, p.role].filter(function (x){ return x && x !== "—"; }).join("  ·  ") })),
-      el("span", { class: "row-meta" }, metaNode),
-      editBtn(function (){ go({ k: "person", id: p.id }); }),
-      delBtn(function (){ removePerson(p); }));
-  }
-
-  if (soon.length) pane.appendChild(section("Follow Up Soon", null, rowsList(soon.map(function (p){ return personRow(p, "soon"); }))));
-  if (recent.length) pane.appendChild(section("Recently Contacted", null, rowsList(recent.map(function (p){ return personRow(p, "recent"); }))));
-  pane.appendChild(section("Everyone", everyone.length + " people", [
-    rowsList(everyone.map(function (p){ return personRow(p, "all"); })),
-    inlineAdd("person", "Add a person — type a name, then fill in their profile", function (v){
-      var np = person(v, "", "", "", "", "", "", []);
-      state.people.push(np);
-      state.ui.route = { k: "person", id: np.id };
-    })
-  ]));
-}
-function viewPerson(pane, r){
-  var p = personById(r.id);
-  if (!p) return go({ k: "people" });
-  pane.appendChild(pageHead(p.name, {
-    crumb: [{ label: "People", go: { k: "people" } }],
-    swatch: "var(--c-people)",
-    actions: [el("button", { class: "btn-ghost", type: "button", style: { color: "var(--overdue)" }, text: "Remove person",
-      onclick: function (){ removePerson(p); } })]
-  }));
-
-  function field(label, key, type){
-    var input = type === "textarea"
-      ? el("textarea", { class: "field-input", value: p[key] || "", onchange: function (e){ mutate(function (){ p[key] = e.target.value; }); } })
-      : el("input", { class: "field-input", type: type || "text", value: p[key] || "",
-          placeholder: type === "date" ? "" : "—",
-          onchange: function (e){ mutate(function (){ p[key] = e.target.value; }); } });
-    return [el("dt", { text: label }), el("dd", {}, input)];
-  }
-  var dl = el("dl", { class: "defn" });
-  [
-    field("Name", "name"), field("Organization", "org"), field("Role", "role"),
-    field("How I know them", "how"), field("Last contacted", "last", "date"),
-    field("Next follow-up", "next", "date"), field("Notes", "notes", "textarea")
-  ].forEach(function (pair){ pair.forEach(function (n){ dl.appendChild(n); }); });
-  pane.appendChild(dl);
-
-  pane.appendChild(section("Linked Tasks", null, [
-    rowsList(p.tasks.map(function (t){
-      return checkRow({
-        text: t.text, done: t.done,
-        onEdit: function (){ openEdit("Edit task", t, FIELDS.todo); },
-        onToggle: function (){ mutate(function (){ t.done = !t.done; }); },
-        onDelete: function (){ mutate(function (){ p.tasks = p.tasks.filter(function (x){ return x !== t; }); }); }
-      });
-    })),
-    inlineAdd("ptask-" + p.id, "Add a task for " + p.name.split(" ")[0], function (v){ p.tasks.push(mk(v)); })
-  ]));
-}
-function removePerson(p){
-  if (!window.confirm("Remove " + (p.name || "this person") + " and their linked tasks?")) return;
-  mutate(function (){
-    state.people = state.people.filter(function (x){ return x !== p; });
-    state.career.networking.forEach(function (t){ if (t.personId === p.id) t.personId = ""; });
-    if (state.ui.route.k === "person") state.ui.route = { k: "people" };
-  });
 }
 
 /* ============ PERSONAL ============ */
@@ -1912,25 +1793,25 @@ function viewPersonal(pane){
 
 /* ============ aggregation ============ */
 /* Where each kind of item lives on the site, so a row on Today or Upcoming can open it. */
+/* People is no longer part of the site. Anyone already saved is kept untouched in the data, but hidden here. */
+function visibleData(){ return Object.assign({}, state, { people: [] }); }
 function routeFor(i){
   var k = i.kind;
   if (k.indexOf("academics.") === 0) return { k: "subject", id: i.spaceId };
-  if (k === "people.person") return { k: "person", id: i.id };
   if (k.indexOf("personal.") === 0) return { k: "personal" };
   var tab = { "lifeadmin.document": "documents", "lifeadmin.home": "home", "lifeadmin.grocery": "groceries", "lifeadmin.bill": "bills",
               "lifeadmin.appointment": "appointments", "career.application": "applications", "career.task": "tasks", "career.networking": "networking" }[k];
   return { k: i.area, tab: tab };
 }
-/* What ticking an item off does. Applications aren't ticked off (they move through a pipeline); a follow-up is done by contacting the person. */
+/* What ticking an item off does. Applications aren't ticked off (they move through a pipeline); */
 function toggleFor(i){
   if (i.kind === "career.application") return null;
-  if (i.kind === "people.person") return function (){ i.raw.last = today(); i.raw.next = ""; };
   return function (){ Standard.setDone(i.kind, i.raw, true); };
 }
 /* Today and Upcoming list whatever lib/standard.js says counts as due: open and dated, applications only while
    still to apply. The same file feeds the morning email, so they can't disagree. */
 function eachDated(cb){
-  Standard.standardItems(state, { today: today() }).forEach(function (i){
+  Standard.standardItems(visibleData(), { today: today() }).forEach(function (i){
     if (!i.dueCounts) return;
     cb({ date: i.date, time: i.time, end: i.endTime, area: i.area, open: routeFor(i), toggle: toggleFor(i),
          title: i.kind === "lifeadmin.bill" ? i.title + " — $" + i.extra.amount : i.dueTitle });
@@ -1940,7 +1821,7 @@ function eachDated(cb){
 var FILLER_KINDS = { academics: ["academics.todo"], lifeadmin: ["lifeadmin.home"], career: ["career.task", "career.networking"], personal: ["personal.task"] };
 function undatedFill(area){
   var kinds = FILLER_KINDS[area] || [];
-  return Standard.standardItems(state).filter(function (i){ return kinds.indexOf(i.kind) > -1 && !i.done && !i.date; })
+  return Standard.standardItems(visibleData()).filter(function (i){ return kinds.indexOf(i.kind) > -1 && !i.done && !i.date; })
     .map(function (i){ return { title: i.title, toggle: toggleFor(i), open: routeFor(i) }; });
 }
 
@@ -1953,11 +1834,11 @@ function viewToday(pane){
   eachDated(function (e){
     if (dayDiff(e.date) <= 0){ (byArea[e.area] = byArea[e.area] || []).push(e); }
   });
-  var order = ["academics","lifeadmin","career","people","personal"];
+  var order = ["academics","lifeadmin","career","personal"];
   var shown = 0;
   order.forEach(function (area){
     var items = (byArea[area] || []).sort(function (a, b){ return (a.date || "") < (b.date || "") ? -1 : 1; });
-    if (items.length < 2 && area !== "people"){
+    if (items.length < 2){
       undatedFill(area).slice(0, 2 - items.length).forEach(function (f){ items.push(f); });
     }
     if (area === "lifeadmin"){
@@ -2051,11 +1932,10 @@ function renderModal(){
         typeBtn("academic", "Academic", "var(--c-acad)"),
         typeBtn("lifeadmin", "Life Admin", "var(--c-admin)"),
         typeBtn("career", "Career", "var(--c-career)"),
-        typeBtn("person", "Person / Follow-up", "var(--c-people)", true),
         typeBtn("personal", "Personal", "var(--c-personal)"))
     );
   } else {
-    body = el("div", {}, el("h2", { text: "New " + ({ academic: "academic item", lifeadmin: "life admin item", career: "career item", person: "person", personal: "personal item" })[add.type] }),
+    body = el("div", {}, el("h2", { text: "New " + ({ academic: "academic item", lifeadmin: "life admin item", career: "career item", personal: "personal item" })[add.type] }),
       formFor(add.type),
       el("div", { class: "modal-actions" },
         el("button", { class: "btn-ghost", text: "‹ Back", onclick: function (){ add.type = null; add.values = {}; renderModal(); } }),
@@ -2118,13 +1998,11 @@ function formFor(type){
         fRow("Due time", fInput("time", { type: "time" }))));
     } else if (kind === "todo"){
       wrap.appendChild(fRow("To-do", fInput("title", { placeholder: "e.g. Read Chapter 4" })));
-      wrap.appendChild(fRow("With (optional)", fSelect("personId", peopleOptions(), "")));
       wrap.appendChild(el("div", { class: "form-grid" },
         fRow("Date (optional)", fInput("date", { type: "date" })),
         fRow("Time (optional)", fInput("time", { type: "time" }))));
     } else if (kind === "event"){
       wrap.appendChild(fRow("Event or meeting", fInput("title", { placeholder: "e.g. Office hours, Club meeting" })));
-      wrap.appendChild(fRow("With (optional)", fSelect("personId", peopleOptions(), "")));
       wrap.appendChild(el("div", { class: "form-grid" },
         fRow("Date", fInput("date", { type: "date" })),
         fRow("Starts", fInput("time", { type: "time" }))));
@@ -2186,21 +2064,10 @@ function formFor(type){
         fRow("Time (optional)", fInput("time", { type: "time" }))));
     } else {
       wrap.appendChild(fRow("Follow-up or event", fInput("text", { placeholder: "e.g. Coffee chat with a Cornell alum" })));
-      wrap.appendChild(fRow("Linked person (optional)", fSelect("personId",
-        [{ v: "", l: "— none —" }].concat(state.people.map(function (p){ return { v: p.id, l: p.name }; })), "")));
       wrap.appendChild(el("div", { class: "form-grid" },
         fRow("Date (optional)", fInput("date", { type: "date" })),
         fRow("Time (optional)", fInput("time", { type: "time" }))));
     }
-  }
-  else if (type === "person"){
-    wrap.appendChild(fRow("Name", fInput("name")));
-    wrap.appendChild(el("div", { class: "form-grid" },
-      fRow("Organization", fInput("org")),
-      fRow("Role", fInput("role"))));
-    wrap.appendChild(fRow("How I know them", fInput("how", { placeholder: "e.g. Classmate, Recruiter, Mentor" })));
-    wrap.appendChild(fRow("Next follow-up", fInput("next", { type: "date" })));
-    wrap.appendChild(fRow("Notes", fArea("notes")));
   }
   else if (type === "personal"){
     wrap.appendChild(fRow("Type", fSelect("sub", [
@@ -2238,12 +2105,11 @@ function submitAdd(){
           s.deadlines.push({ id: uid(), title: val.title, type: val.dtype || "Assignment",
             date: val.date || "", time: val.time || "", status: "Not started" });
         } else if (kind === "todo"){
-          var td = dat(val.title, val.date || "", val.time || ""); td.personId = val.personId || "";
-          s.todos.push(td);
+          s.todos.push(dat(val.title, val.date || "", val.time || ""));
         } else if (kind === "event"){
           if (!val.date) return warn();
           (s.events = s.events || []).push({ id: uid(), title: val.title, date: val.date, time: val.time || "", endTime: val.endTime || "",
-            done: false, personId: val.personId || "", notes: "" });
+            done: false, notes: "" });
         } else {
           s.milestones.push(ms(val.title, val.date || ""));
         }
@@ -2274,15 +2140,9 @@ function submitAdd(){
       } else if (cs === "task"){ if (!val.text) return warn();
         cr.tasks.push(dat(val.text, val.date || "", val.time || "")); route = { k: "career", tab: "tasks" };
       } else { if (!val.text) return warn();
-        cr.networking.push({ id: uid(), text: val.text, done: false, personId: val.personId || "", date: val.date || "", time: val.time || "" });
+        cr.networking.push({ id: uid(), text: val.text, done: false, personId: "", date: val.date || "", time: val.time || "" });
         route = { k: "career", tab: "networking" };
       }
-    }
-    else if (type === "person"){
-      if (!val.name) return warn();
-      var np = person(val.name, val.org || "", val.role || "", val.how || "", "", val.next || "", val.notes || "", []);
-      state.people.push(np);
-      route = { k: "person", id: np.id };
     }
     else if (type === "personal"){
       var pk = val.sub || "recreation";

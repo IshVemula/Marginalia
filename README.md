@@ -6,14 +6,13 @@ data is stored in your own Supabase project and syncs across devices.
 
 ## Structure
 
-Five areas, each with its own model:
+Four areas, each with its own model:
 
 | Area | Question it answers |
 |------|---------------------|
 | **Academics** | What do I need to do for each subject, and what deadlines are coming up? |
 | **Life Admin** | What annoying but important life thing am I forgetting? |
 | **Career** | What should I do next professionally? |
-| **People** | Who should I remember to reach out to? |
 | **Personal** | What do I want to make time for? |
 
 Plus **Today**, **Upcoming**, and a single typed **+ Add** flow.
@@ -25,8 +24,7 @@ Plus **Today**, **Upcoming**, and a single typed **+ Add** flow.
 - Academics holds **spaces**: a course, project, club or job (pick the type, add a contact such as a
   professor or lead). Add one from the page or **+ Add -> Academic -> New course, project or club**;
   **Edit** renames, recolors, or deletes one; the semester name has its own **Edit**. Each space has
-  deadlines, to-dos, **events & meetings**, milestones and weekly class times. To-dos and events can be
-  marked as "with" someone from People.
+  deadlines, to-dos, **events & meetings**, milestones and weekly class times.
 - **+ Add a deadline / milestone / bill / document / application** links sit under each list.
 - **Start fresh** (bottom of the sidebar) clears the example data after a confirmation.
 
@@ -71,7 +69,7 @@ few security headers.
 
 Every morning Marginalia emails you a short summary of your day, built from the same Supabase data the
 site uses: **classes today**, **overdue**, **due today**, **the next 3 days**, and a small "on your
-radar" (bills due soon, applications you're waiting on, people to follow up with). Sections with nothing in
+radar" (bills due soon, applications you're waiting on). Sections with nothing in
 them are left out, and on a day with nothing at all you get a short "Clear day" note. It is read-only: the
 digest never changes your planner data.
 
@@ -175,7 +173,7 @@ saving change (Mar 8 and Nov 1, 2026), the once-a-day guard, retries, the send w
 
 ### For later: a ranked plan
 The code is split so a ranked plan (a capped 3-5 item list scored by due date, size, and how long something has
-sat untouched, with a slot kept for Career and People) can replace the simple sections without touching the rest:
+sat untouched) can replace the simple sections without touching the rest:
 `lib/digest/collect.js` reads the data, `lib/digest/phase1.js` chooses what appears, `lib/digest/render.js` draws
 the email, and `lib/digest/index.js` is where another planner is registered.
 
@@ -193,6 +191,11 @@ Claude's tools (the `grad-task-mcp` repo) use a Python port, `standard.py`, whic
 answers as this file. Both are tested against the files in `test/golden/`. If you change what the standard
 view means on purpose: run `npm run golden`, review the diff of `test/golden/expected.json`, and copy the
 files in `test/golden/` to the `golden/` folder of the other repo.
+
+## About People
+
+There is no People section any more. If you used it before, whoever you saved is still in your data (and in
+**Download backup**), just not shown anywhere, and follow-ups no longer appear on Today, Upcoming or the email.
 
 ## Notes
 
