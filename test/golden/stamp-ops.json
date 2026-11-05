@@ -1,0 +1,9 @@
+{
+  "now": "2026-11-05T15:00:00.000Z",
+  "edit": { "t3": { "text": "Read the syllabus (edited)" }, "ct1": { "time": "16:00" } },
+  "done": { "t2": true, "t4": false, "b1": true },
+  "add": [
+    { "list": "todos", "space": "s1", "item": { "id": "t9", "text": "A brand new to-do", "done": false } },
+    { "list": "events", "space": "s2", "item": { "id": "e9", "title": "Club meetup", "date": "2026-11-12", "time": "18:00", "endTime": "19:00", "location": "", "notes": "", "done": false } }
+  ]
+}

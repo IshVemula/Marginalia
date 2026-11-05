@@ -1,0 +1,16 @@
+{
+  "academics": {
+    "semester": "Fall 2026",
+    "subjects": [
+      { "id": "v1", "name": "Decision Framing and Analysis", "professor": "Prof. Reed", "color": "var(--c-acad)",
+        "deadlines": [], "todos": [{ "id": "vt1", "text": "Read ch 4", "done": false }], "milestones": [],
+        "schedule": [{ "id": "vc1", "title": "Lecture", "days": [2, 4], "start": "10:10", "end": "11:25", "location": "Olin", "from": "", "until": "" }] },
+      { "id": "v2", "name": "Graduate PM Club", "professor": "President - Ishitha", "color": "var(--c-people)",
+        "deadlines": [], "todos": [], "milestones": [] }
+    ]
+  },
+  "lifeadmin": { "documents": [], "home": [], "groceries": [], "bills": [], "appointments": [] },
+  "career": { "applications": [], "tasks": [], "networking": [] },
+  "people": [],
+  "personal": { "recreation": [], "social": [], "tasks": [] }
+}

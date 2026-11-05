@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 2,
+  "academics": {
+    "semester": "Fall 2026",
+    "subjects": [
+      {
+        "id": "s1", "name": "Applications of AI", "type": "Course", "contact": "Prof. Swart", "color": "var(--c-acad)",
+        "deadlines": [
+          { "id": "d1", "title": "Case Analysis", "type": "Assignment", "date": "2026-11-03", "time": "23:59", "status": "In progress" },
+          { "id": "d2", "title": "Quiz 3", "type": "Quiz", "date": "2026-11-05", "time": "09:00", "status": "Not started" },
+          { "id": "d3", "title": "Handed in", "type": "Assignment", "date": "2026-11-05", "time": "", "status": "Done", "createdAt": "2026-10-01T12:00:00.000Z", "updatedAt": "2026-11-04T09:00:00.000Z", "doneAt": "2026-11-04T09:00:00.000Z" }
+        ],
+        "todos": [
+          { "id": "t1", "text": "Grade the group projects", "done": false, "date": "2026-11-06", "time": "17:00", "personId": "p1" },
+          { "id": "t2", "text": "Reading", "done": false, "date": "2026-11-05", "time": "" },
+          { "id": "t3", "text": "Read the syllabus", "done": false },
+          { "id": "t4", "text": "Already done", "done": true, "date": "2026-11-05", "doneAt": "2026-11-04T10:00:00.000Z" }
+        ],
+        "events": [
+          { "id": "e1", "title": "Product in Practice", "date": "2026-11-10", "time": "15:30", "endTime": "16:30", "location": "Room 1", "notes": "Bring a laptop", "done": false, "personId": "p1" }
+        ],
+        "milestones": [
+          { "id": "m1", "title": "Final Project", "date": "2026-12-08", "done": false },
+          { "id": "m2", "title": "Short Quiz", "date": "2026-11-03", "done": true }
+        ],
+        "schedule": [
+          { "id": "c1", "title": "Lecture", "days": [2, 4], "start": "08:40", "end": "09:55", "location": "Tang Hall", "from": "", "until": "" },
+          { "id": "c2", "title": "Old section", "days": [4], "start": "07:00", "end": "08:00", "location": "Room 1", "from": "", "until": "2026-10-01" },
+          { "id": "c3", "title": "Starts later", "days": [4], "start": "07:30", "end": "08:30", "location": "Room 2", "from": "2026-12-01", "until": "" }
+        ]
+      },
+      {
+        "id": "s2", "name": "Graduate PM Club", "type": "Club", "contact": "President", "color": "var(--c-people)",
+        "deadlines": [], "todos": [{ "id": "t5", "text": "Post the mixer photos", "done": false }], "events": [], "milestones": [], "schedule": []
+      }
+    ]
+  },
+  "lifeadmin": {
+    "documents": [
+      { "id": "doc1", "name": "OPT", "deadline": "2026-11-06", "status": "In Progress", "link": "", "notes": "Waiting on I-20" },
+      { "id": "doc2", "name": "Health waiver", "deadline": "2026-11-05", "status": "Complete", "link": "", "notes": "" }
+    ],
+    "home": [{ "id": "h1", "text": "Laundry", "done": false, "recur": "weekly" }],
+    "groceries": [{ "id": "g1", "name": "Milk", "group": "Dairy", "done": false }],
+    "bills": [
+      { "id": "b1", "name": "Rent", "amount": 1400, "due": "2026-11-30", "paid": false, "recur": "monthly" },
+      { "id": "b2", "name": "Wi-Fi", "amount": 50, "due": "2026-11-04", "paid": false, "recur": "monthly" },
+      { "id": "b3", "name": "Spotify", "amount": 11, "due": "2026-11-05", "paid": true, "recur": "monthly" }
+    ],
+    "appointments": [{ "id": "ap1", "title": "Dentist", "date": "2026-11-05", "time": "10:00", "done": false }]
+  },
+  "career": {
+    "applications": [
+      { "id": "a1", "company": "Google", "role": "APM Intern", "deadline": "2026-11-06", "status": "Preparing" },
+      { "id": "a2", "company": "Databricks", "role": "APM", "deadline": "2026-11-01", "status": "Waiting" },
+      { "id": "a3", "company": "Rivet", "role": "PM", "deadline": "2026-10-20", "status": "Rejected" },
+      { "id": "a4", "company": "Northwind", "role": "PM Intern", "deadline": "", "status": "Interested" }
+    ],
+    "tasks": [
+      { "id": "ct1", "text": "Update resume", "done": false, "date": "2026-11-05", "time": "15:00", "personId": "" },
+      { "id": "ct2", "text": "Update portfolio", "done": false }
+    ],
+    "networking": [
+      { "id": "n1", "text": "Coffee chat", "done": false, "personId": "p1", "date": "2026-11-07", "time": "11:00" },
+      { "id": "n2", "text": "Thank-you note", "done": true, "personId": "", "date": "2026-11-05", "time": "" }
+    ]
+  },
+  "people": [
+    { "id": "p1", "name": "Diana Lee", "org": "Cornell", "role": "Staff", "how": "Club advisor", "last": "2026-10-29", "next": "2026-11-05", "notes": "", "tasks": [{ "id": "pt1", "text": "Send venue details", "done": false }] },
+    { "id": "p2", "name": "Hema", "org": "", "role": "", "how": "Friend", "last": "", "next": "", "notes": "", "tasks": [] }
+  ],
+  "personal": {
+    "recreation": [{ "id": "r1", "text": "Buttermilk Falls hike", "done": false, "date": "2026-11-08", "time": "10:00" }],
+    "social": [{ "id": "so1", "text": "Diwali party", "done": false, "date": "2026-11-07", "time": "18:00", "personId": "p2" }],
+    "tasks": [{ "id": "pe1", "text": "Buy clothes", "done": false }]
+  }
+}
