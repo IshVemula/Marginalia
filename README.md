@@ -24,7 +24,7 @@ Plus **Today**, **Upcoming**, and a single typed **+ Add** flow.
 - Academics holds **spaces**: a course, project, club or job (pick the type, add a contact such as a
   professor or lead). Add one from the page or **+ Add -> Academic -> New course, project or club**;
   **Edit** renames, recolors, or deletes one; the semester name has its own **Edit**. Each space has
-  **to-dos** (optionally dated, with a kind such as Exam or Assignment), **events & meetings**, milestones
+  **to-dos** (Not started / In progress / Done, optionally dated, with a kind such as Assignment, Exam or Meeting), **events & meetings**, milestones
   and weekly class times. There used to be separate deadlines; they are now just dated to-dos.
 - **+ Add a to-do / milestone / bill / document / application** links sit under each list.
 - **Start fresh** (bottom of the sidebar) clears the example data after a confirmation.

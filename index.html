@@ -681,7 +681,8 @@ var AREAS = {
   career:    { label: "Career",    color: "var(--c-career)" },
   personal:  { label: "Personal",  color: "var(--c-personal)" }
 };
-var KIND_CHOICES = [{ v: "", l: "— none —" }, "Assignment", "Exam", "Quiz", "Project", "Presentation", "Reading"];
+var KIND_CHOICES = [{ v: "", l: "— none —" }, "Assignment", "Exam", "Project", "Presentation", "Reading", "Meeting"];
+var TODO_STATUS = ["Not started", "In progress", "Done"];
 var SPACE_TYPES = ["Course","Project","Club","Job","Other"];
 var DOC_STATUS = ["Not Started","In Progress","Submitted","Waiting","Complete"];
 var APP_STATUS = ["Interested","Preparing","Applied","Interview","Waiting","Offer","Rejected","Closed"];
@@ -708,7 +709,7 @@ function seed(){
           milestones: [ ms("Midterm", offset(21)), ms("Final Exam", offset(103)) ],
           schedule: [ cls("Lecture", [1, 3], "10:10", "11:25", "Room 204") ] },
         { id: "s-ai", name: "AI Applications", type: "Course", contact: "Prof. Adeyemi", events: [], color: "var(--c-career)",
-          todos: [ work("Case Analysis 2", "Assignment", offset(6), "23:59"), work("Quiz 1", "Quiz", offset(12), "09:00"), work("Group Project Proposal", "Project", offset(15), "17:00"), mk("Read AI case"), mk("Message project team"), mk("Set up Colab notebook") ],
+          todos: [ Object.assign(work("Case Analysis 2", "Assignment", offset(6), "23:59"), { status: "In progress" }), work("Quiz 1", "Exam", offset(12), "09:00"), work("Group Project Proposal", "Project", offset(15), "17:00"), mk("Read AI case"), mk("Message project team"), mk("Set up Colab notebook") ],
           milestones: [ ms("Final Project", offset(96)) ],
           schedule: [ cls("Lecture", [2, 4], "08:40", "09:55", "Room 120") ] },
         { id: "s-ind", name: "Independent Study", type: "Course", contact: "Dr. Puga", events: [], color: "var(--c-people)",
@@ -1396,6 +1397,9 @@ function rowsList(items){
 /* ============ ACADEMICS ============ */
 /* "Course · Dr. Lindqvist": what kind of space, and who runs it. Older data kept the contact as "professor". */
 function spaceSub(s){ return [s.type, s.contact || s.professor].filter(Boolean).join(" · "); }
+/* A to-do is Not started, In progress or Done. Done is the tick; "In progress" is remembered in `status`. */
+function todoStatus(t){ return t.done ? "Done" : (t.status === "In progress" ? "In progress" : "Not started"); }
+function setTodoStatus(t, v){ t.done = v === "Done"; t.status = v === "In progress" ? "In progress" : ""; }
 function subjectStats(s){
   var open = s.todos.filter(function (t){ return !t.done; });
   var next = open.filter(function (t){ return t.date; }).sort(function (a, b){ return a.date < b.date ? -1 : 1; })[0];
@@ -1494,9 +1498,10 @@ function viewSubject(pane, r){
     rowsList(s.todos.slice().sort(byWhen).map(function (t){
       return checkRow({
         text: t.text, done: t.done, sub: t.type || null,
-        meta: t.date || t.time ? metaDate(t.date, t.time) : null,
+        meta: [t.date || t.time ? metaDate(t.date, t.time) : null,
+               statusPill(todoStatus(t), TODO_STATUS, function (v){ mutate(function (){ setTodoStatus(t, v); }); })],
         onEdit: function (){ openEdit("Edit to-do", t, subjecttodoFields()); },
-        onToggle: function (){ mutate(function (){ t.done = !t.done; }); },
+        onToggle: function (){ mutate(function (){ setTodoStatus(t, t.done ? "Not started" : "Done"); }); },
         onDelete: function (){ mutate(function (){ s.todos = s.todos.filter(function (x){ return x !== t; }); }); }
       });
     })),

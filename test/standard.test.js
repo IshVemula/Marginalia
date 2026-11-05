@@ -192,7 +192,7 @@ test('upgrading an old workspace adds type, contact and events, folds deadlines 
   const [assignment, quiz] = decision.todos.slice(1);
   assert.deepEqual([assignment.id, assignment.text, assignment.type, assignment.date, assignment.time, assignment.done, assignment.status],
     ['vd1', 'Assignment 4', 'Assignment', '2026-11-12', '23:59', false, 'In progress']);          // nothing about it is lost
-  assert.deepEqual([quiz.text, quiz.done, 'status' in quiz], ['Quiz 1', true, false]);              // "Done" is now just ticked
+  assert.deepEqual([quiz.text, quiz.type, quiz.done, 'status' in quiz], ['Quiz 1', 'Exam', true, false]);   // "Done" is now just ticked; a quiz is an exam
   const items = Standard.standardItems(data, { today: TODAY }).filter((i) => i.id === 'vd1');
   assert.deepEqual([items[0].kind, items[0].extra.type, items[0].dueCounts], ['academics.todo', 'Assignment', true]);
   assert.equal(decision.schedule[0].location, 'Olin');
