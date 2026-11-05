@@ -22,8 +22,11 @@ Plus **Today**, **Upcoming**, and a single typed **+ Add** flow.
 
 - Hover a row (or just look, on a phone) and click **Edit**, or click its text, to change any
   field: dates, times, status, amounts, links, notes, categories.
-- Academics: add subjects from the page or **+ Add -> Academic -> New subject**; **Edit subject**
-  renames, recolors, or deletes one; the semester name has its own **Edit**.
+- Academics holds **spaces**: a course, project, club or job (pick the type, add a contact such as a
+  professor or lead). Add one from the page or **+ Add -> Academic -> New course, project or club**;
+  **Edit** renames, recolors, or deletes one; the semester name has its own **Edit**. Each space has
+  deadlines, to-dos, **events & meetings**, milestones and weekly class times. To-dos and events can be
+  marked as "with" someone from People.
 - **+ Add a deadline / milestone / bill / document / application** links sit under each list.
 - **Start fresh** (bottom of the sidebar) clears the example data after a confirmation.
 
@@ -175,6 +178,21 @@ The code is split so a ranked plan (a capped 3-5 item list scored by due date, s
 sat untouched, with a slot kept for Career and People) can replace the simple sections without touching the rest:
 `lib/digest/collect.js` reads the data, `lib/digest/phase1.js` chooses what appears, `lib/digest/render.js` draws
 the email, and `lib/digest/index.js` is where another planner is registered.
+
+## One shared definition of the data
+
+`lib/standard.js` is the single place that says what each kind of item is: which field is its title, its date,
+its time, what "done" means for it, and whether it counts as due. The website (Today, Upcoming, the week
+calendar), the morning email and Claude's tools all read the data through it, so they can't disagree about
+what's due. It also records **when each item was created, last changed and finished** (`createdAt`,
+`updatedAt`, `doneAt`; stamped in one place when anything changes) and upgrades older data
+(`schemaVersion`, currently 2) without removing anything. **Download backup** (sidebar) saves everything as
+a JSON file.
+
+Claude's tools (the `grad-task-mcp` repo) use a Python port, `standard.py`, which must give the same
+answers as this file. Both are tested against the files in `test/golden/`. If you change what the standard
+view means on purpose: run `npm run golden`, review the diff of `test/golden/expected.json`, and copy the
+files in `test/golden/` to the `golden/` folder of the other repo.
 
 ## Notes
 
