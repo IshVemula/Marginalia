@@ -3,7 +3,8 @@
     "semester": "Fall 2026",
     "subjects": [
       { "id": "v1", "name": "Decision Framing and Analysis", "professor": "Prof. Reed", "color": "var(--c-acad)",
-        "deadlines": [], "todos": [{ "id": "vt1", "text": "Read ch 4", "done": false }], "milestones": [],
+        "deadlines": [{ "id": "vd1", "title": "Assignment 4", "type": "Assignment", "date": "2026-11-12", "time": "23:59", "status": "In progress" },
+                      { "id": "vd2", "title": "Quiz 1", "type": "Quiz", "date": "2026-10-20", "time": "", "status": "Done" }], "todos": [{ "id": "vt1", "text": "Read ch 4", "done": false }], "milestones": [],
         "schedule": [{ "id": "vc1", "title": "Lecture", "days": [2, 4], "start": "10:10", "end": "11:25", "location": "Olin", "from": "", "until": "" }] },
       { "id": "v2", "name": "Graduate PM Club", "professor": "President - Ishitha", "color": "var(--c-people)",
         "deadlines": [], "todos": [], "milestones": [] }

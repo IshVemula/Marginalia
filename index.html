@@ -525,7 +525,7 @@ function dayHeading(iso){
   var d = new Date(iso + "T00:00:00");
   return WD[d.getDay()] + " · " + MON[d.getMonth()] + " " + d.getDate();
 }
-/* A small box of classes, kept apart from deadlines. groups = [{ label, items }] */
+/* A small box of classes, kept apart from to-dos. groups = [{ label, items }] */
 function classBox(title, groups){
   var box = el("section", { class: "class-box", "aria-label": title },
     el("div", { class: "class-box-head" }, el("span", { class: "dot" }), el("span", { class: "lbl", text: title })));
@@ -540,7 +540,7 @@ function classBox(title, groups){
   });
   return box;
 }
-/* ---- a small calendar for this week (Monday to Sunday): classes on a time axis, deadlines as chips ---- */
+/* ---- a small calendar for this week (Monday to Sunday): classes on a time axis, dated items as chips ---- */
 var HOUR_PX = 28;
 function mins(clock){ var p = String(clock || "").split(":"); return (+p[0]) * 60 + (+p[1] || 0); }
 function shiftIso(iso, n){ var d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n); return toISO(d); }
@@ -569,7 +569,7 @@ function weekData(subjects, days){
   });
   var chosen = {};
   subjects.forEach(function (s){ chosen[s.id] = s; });
-  Standard.standardItems(visibleData()).forEach(function (i){          // deadlines, milestones, events and dated to-dos in these spaces
+  Standard.standardItems(visibleData()).forEach(function (i){          // dated to-dos, milestones and events in these spaces
     if (!i.dueCounts || !chosen[i.spaceId] || !due[i.date]) return;
     due[i.date].push({ s: chosen[i.spaceId], title: i.title || i.label,
       detail: [i.extra.type || i.label, i.time ? fmtTime(i.time) : ""].filter(Boolean).join(" · ") });
@@ -681,9 +681,8 @@ var AREAS = {
   career:    { label: "Career",    color: "var(--c-career)" },
   personal:  { label: "Personal",  color: "var(--c-personal)" }
 };
-var DEADLINE_TYPES = ["Assignment","Exam","Project","Presentation","Reading","Quiz"];
+var KIND_CHOICES = [{ v: "", l: "— none —" }, "Assignment", "Exam", "Quiz", "Project", "Presentation", "Reading"];
 var SPACE_TYPES = ["Course","Project","Club","Job","Other"];
-var DEADLINE_STATUS = ["Not started","In progress","Done"];
 var DOC_STATUS = ["Not Started","In Progress","Submitted","Waiting","Complete"];
 var APP_STATUS = ["Interested","Preparing","Applied","Interview","Waiting","Offer","Rejected","Closed"];
 var RECUR = ["none","daily","weekly","monthly"];
@@ -705,36 +704,19 @@ function seed(){
       semester: "Fall 2026",
       subjects: [
         { id: "s-econ", name: "Economics & Finance", type: "Course", contact: "Dr. Lindqvist", events: [], color: "var(--c-acad)",
-          deadlines: [
-            { id: uid(), title: "Assignment 3", type: "Assignment", date: offset(9), time: "23:59", status: "Not started" },
-            { id: uid(), title: "Midterm", type: "Exam", date: offset(21), time: "14:00", status: "Not started" },
-            { id: uid(), title: "Problem Set 4", type: "Assignment", date: offset(30), time: "23:59", status: "Not started" }
-          ],
-          todos: [ mk("Read Chapter 4"), mk("Finish question 3"), mk("Review lecture slides") ],
+          todos: [ work("Assignment 3", "Assignment", offset(9), "23:59"), work("Midterm", "Exam", offset(21), "14:00"), work("Problem Set 4", "Assignment", offset(30), "23:59"), mk("Read Chapter 4"), mk("Finish question 3"), mk("Review lecture slides") ],
           milestones: [ ms("Midterm", offset(21)), ms("Final Exam", offset(103)) ],
           schedule: [ cls("Lecture", [1, 3], "10:10", "11:25", "Room 204") ] },
         { id: "s-ai", name: "AI Applications", type: "Course", contact: "Prof. Adeyemi", events: [], color: "var(--c-career)",
-          deadlines: [
-            { id: uid(), title: "Case Analysis 2", type: "Assignment", date: offset(6), time: "23:59", status: "In progress" },
-            { id: uid(), title: "Quiz 1", type: "Quiz", date: offset(12), time: "09:00", status: "Not started" },
-            { id: uid(), title: "Group Project Proposal", type: "Project", date: offset(15), time: "17:00", status: "Not started" }
-          ],
-          todos: [ mk("Read AI case"), mk("Message project team"), mk("Set up Colab notebook") ],
+          todos: [ work("Case Analysis 2", "Assignment", offset(6), "23:59"), work("Quiz 1", "Quiz", offset(12), "09:00"), work("Group Project Proposal", "Project", offset(15), "17:00"), mk("Read AI case"), mk("Message project team"), mk("Set up Colab notebook") ],
           milestones: [ ms("Final Project", offset(96)) ],
           schedule: [ cls("Lecture", [2, 4], "08:40", "09:55", "Room 120") ] },
         { id: "s-ind", name: "Independent Study", type: "Course", contact: "Dr. Puga", events: [], color: "var(--c-people)",
-          deadlines: [
-            { id: uid(), title: "Literature review draft", type: "Reading", date: offset(27), time: "23:59", status: "Not started" }
-          ],
-          todos: [ mk("Email professor about scope"), mk("Send grant requirements") ],
+          todos: [ work("Literature review draft", "Reading", offset(27), "23:59"), mk("Email professor about scope"), mk("Send grant requirements") ],
           milestones: [ ms("Final Paper", offset(100)) ],
           schedule: [ cls("Advisor meeting", [5], "13:00", "14:00") ] },
         { id: "s-tech", name: "Technology Strategy", type: "Course", contact: "Prof. Rhee", events: [], color: "var(--c-personal)",
-          deadlines: [
-            { id: uid(), title: "Reading response 2", type: "Reading", date: offset(5), time: "23:59", status: "Not started" },
-            { id: uid(), title: "Team presentation", type: "Presentation", date: offset(26), time: "13:00", status: "Not started" }
-          ],
-          todos: [ mk("Review lecture slides"), mk("Pick case study") ],
+          todos: [ work("Reading response 2", "Reading", offset(5), "23:59"), work("Team presentation", "Presentation", offset(26), "13:00"), mk("Review lecture slides"), mk("Pick case study") ],
           milestones: [ ms("Midterm", offset(47)), ms("Final Presentation", offset(91)) ],
           schedule: [ cls("Lecture", [2, 4], "14:00", "15:15", "Room 310") ] }
       ]
@@ -796,6 +778,7 @@ function seed(){
     }
   };
 }
+function work(t, type, d, tm){ return { id: uid(), text: t, type: type, done: false, date: d, time: tm }; }
 function mk(t){ return { id: uid(), text: t, done: false }; }
 function rec(t, r){ return { id: uid(), text: t, done: false, recur: r }; }
 function gro(n, g){ return { id: uid(), name: n, group: g, done: false }; }
@@ -1114,8 +1097,6 @@ var COLORS = [
 var FIELDS = {
   subject:     [F("name", "Name"), F("type", "What is it?", "select", SPACE_TYPES, { half: true }), F("color", "Color", "select", COLORS, { half: true }),
                 F("contact", "Contact — professor, advisor, lead (optional)")],
-  deadline:    [F("title", "Title"), F("type", "Type", "select", DEADLINE_TYPES, { half: true }), F("status", "Status", "select", DEADLINE_STATUS, { half: true }),
-                F("date", "Due date", "date", null, { half: true }), F("time", "Due time", "time", null, { half: true })],
   todo:        [F("text", "Task")],
   careertask:  [F("text", "Task"), F("date", "Date", "date", null, { half: true }), F("time", "Time", "time", null, { half: true })],
   milestone:   [F("title", "Milestone"), F("date", "Date", "date")],
@@ -1136,7 +1117,8 @@ var FIELDS = {
                 F("from", "First day (optional)", "date", null, { half: true }), F("until", "Last day (optional)", "date", null, { half: true })]
 };
 function subjecttodoFields(){
-  return [F("text", "Task"), F("date", "Date (optional)", "date", null, { half: true }), F("time", "Time (optional)", "time", null, { half: true })];
+  return [F("text", "To-do"), F("type", "Kind (optional)", "select", KIND_CHOICES),
+    F("date", "Date (optional)", "date", null, { half: true }), F("time", "Time (optional)", "time", null, { half: true })];
 }
 function eventFields(){
   return [F("title", "Event or meeting"),
@@ -1415,14 +1397,13 @@ function rowsList(items){
 /* "Course · Dr. Lindqvist": what kind of space, and who runs it. Older data kept the contact as "professor". */
 function spaceSub(s){ return [s.type, s.contact || s.professor].filter(Boolean).join(" · "); }
 function subjectStats(s){
-  var openTodos = s.todos.filter(function (t){ return !t.done; }).length;
-  var openDl = s.deadlines.filter(function (d){ return d.status !== "Done"; });
-  var next = openDl.slice().sort(function (a, b){ return (a.date || "9") < (b.date || "9") ? -1 : 1; })[0];
-  return { open: openTodos + openDl.length, next: next };
+  var open = s.todos.filter(function (t){ return !t.done; });
+  var next = open.filter(function (t){ return t.date; }).sort(function (a, b){ return a.date < b.date ? -1 : 1; })[0];
+  return { open: open.length, next: next };
 }
 function newSpace(name, type, contact, color){
   return { id: uid(), name: name, type: type || "", contact: contact || "", color: color,
-           deadlines: [], todos: [], milestones: [], events: [], schedule: [] };
+           todos: [], milestones: [], events: [], schedule: [] };
 }
 function viewAcademics(pane){
   pane.appendChild(pageHead("Academics", { sub: "What do I need to do for each subject, and what's coming up?" }));
@@ -1487,7 +1468,7 @@ function subjectRemoveRun(s){
     state.ui.route = { k: "academics" };
   };
 }
-function subjectRemoveMsg(s){ return "Delete " + s.name + " and all its deadlines, to-dos, events and milestones?"; }
+function subjectRemoveMsg(s){ return "Delete " + s.name + " and all its to-dos, events and milestones?"; }
 function removeSubject(s){
   if (window.confirm(subjectRemoveMsg(s))) mutate(subjectRemoveRun(s));
 }
@@ -1509,34 +1490,17 @@ function viewSubject(pane, r){
   var weekOne = weekCalendar([s], { title: "This week", onlySubject: true });
   if (weekOne) pane.appendChild(weekOne);
 
-  var dls = s.deadlines.slice().sort(function (a, b){ return (a.date || "9999-99-99") < (b.date || "9999-99-99") ? -1 : 1; });
-  pane.appendChild(section("Upcoming Deadlines", null, [rowsList(dls.map(function (d){
-    function editDl(){ openEdit("Edit deadline", d, FIELDS.deadline, { remove: { run: function (){ s.deadlines = s.deadlines.filter(function (x){ return x !== d; }); } } }); }
-    return el("li", { class: "row" + (d.status === "Done" ? " done" : "") },
-      el("span", { class: "row-main" },
-        el("span", { class: "type-eyebrow", text: d.type }),
-        el("span", { class: "row-text editable", text: d.title, title: "Click to edit", onclick: editDl }),
-        el("span", { class: "row-sub" }, metaDate(d.date, d.time))),
-      el("span", { class: "row-meta" }, statusPill(d.status, DEADLINE_STATUS, function (v){
-        mutate(function (){ d.status = v; });
-      })),
-      editBtn(editDl),
-      el("button", { class: "del", "aria-label": "Delete", text: "×",
-        onclick: function (){ mutate(function (){ s.deadlines = s.deadlines.filter(function (x){ return x !== d; }); }); } })
-    );
-  })), addLink("Add a deadline", function (){ openAddPreset("academic", { subject: s.id, kind: "deadline" }); })]));
-
-  pane.appendChild(section("Things To Do", null, [
+  pane.appendChild(section("To-dos", null, [
     rowsList(s.todos.slice().sort(byWhen).map(function (t){
       return checkRow({
-        text: t.text, done: t.done,
+        text: t.text, done: t.done, sub: t.type || null,
         meta: t.date || t.time ? metaDate(t.date, t.time) : null,
         onEdit: function (){ openEdit("Edit to-do", t, subjecttodoFields()); },
         onToggle: function (){ mutate(function (){ t.done = !t.done; }); },
         onDelete: function (){ mutate(function (){ s.todos = s.todos.filter(function (x){ return x !== t; }); }); }
       });
     })),
-    inlineAdd("subtodo-" + s.id, "Add a to-do — e.g. email professor (click Edit to set a date)", function (v){ s.todos.push(mk(v)); })
+    inlineAdd("subtodo-" + s.id, "Add a to-do — e.g. Assignment 3 (click Edit to set a date)", function (v){ s.todos.push(mk(v)); })
   ]));
 
   s.events = s.events || [];
@@ -1978,9 +1942,9 @@ function formFor(type){
   if (type === "academic"){
     var subs = state.academics.subjects.map(function (s){ return { v: s.id, l: s.name }; });
     var kinds = subs.length
-      ? [{ v: "deadline", l: "Deadline" }, { v: "todo", l: "To-do" }, { v: "event", l: "Event or meeting" }, { v: "milestone", l: "Milestone" }, { v: "class", l: "Class time (repeats weekly)" }, { v: "subject", l: "New course, project or club" }]
+      ? [{ v: "todo", l: "To-do" }, { v: "event", l: "Event or meeting" }, { v: "milestone", l: "Milestone" }, { v: "class", l: "Class time (repeats weekly)" }, { v: "subject", l: "New course, project or club" }]
       : [{ v: "subject", l: "New course, project or club" }];
-    var kind = v("kind", subs.length ? "deadline" : "subject");
+    var kind = v("kind", subs.length ? "todo" : "subject");
     if (kind !== "subject") wrap.appendChild(fRow("Where", fSelect("subject", subs)));
     wrap.appendChild(fRow("What kind?", fSelect("kind", kinds, kind)));
     if (kind === "subject"){
@@ -1990,14 +1954,9 @@ function formFor(type){
     } else if (kind === "class"){
       wrap.appendChild(el("p", { class: "page-sub", style: { margin: "0 0 4px" },
         text: "Next you'll choose the days and times it repeats, and it will show up on Today and Upcoming." }));
-    } else if (kind === "deadline"){
-      wrap.appendChild(fRow("Type", fSelect("dtype", DEADLINE_TYPES)));
-      wrap.appendChild(fRow("Title", fInput("title", { placeholder: "e.g. Assignment 3" })));
-      wrap.appendChild(el("div", { class: "form-grid" },
-        fRow("Due date", fInput("date", { type: "date" })),
-        fRow("Due time", fInput("time", { type: "time" }))));
     } else if (kind === "todo"){
-      wrap.appendChild(fRow("To-do", fInput("title", { placeholder: "e.g. Read Chapter 4" })));
+      wrap.appendChild(fRow("To-do", fInput("title", { placeholder: "e.g. Read Chapter 4, Assignment 3" })));
+      wrap.appendChild(fRow("Kind (optional)", fSelect("dtype", KIND_CHOICES, "")));
       wrap.appendChild(el("div", { class: "form-grid" },
         fRow("Date (optional)", fInput("date", { type: "date" })),
         fRow("Time (optional)", fInput("time", { type: "time" }))));
@@ -2087,7 +2046,7 @@ function submitAdd(){
   var val = add.values, type = add.type, route, before = Standard.snapshot(state);
   try {
     if (type === "academic"){
-      var kind = val.kind || (state.academics.subjects.length ? "deadline" : "subject");
+      var kind = val.kind || (state.academics.subjects.length ? "todo" : "subject");
       if (kind === "class"){                       // the day/time picker lives in the edit dialog
         var cs = subjectById(val.subject || (state.academics.subjects[0] || {}).id); if (!cs) return;
         closeAdd();
@@ -2101,11 +2060,9 @@ function submitAdd(){
         route = { k: "subject", id: ns.id };
       } else {
         var s = subjectById(val.subject || (state.academics.subjects[0] || {}).id); if (!s) return;
-        if (kind === "deadline"){
-          s.deadlines.push({ id: uid(), title: val.title, type: val.dtype || "Assignment",
-            date: val.date || "", time: val.time || "", status: "Not started" });
-        } else if (kind === "todo"){
-          s.todos.push(dat(val.title, val.date || "", val.time || ""));
+        if (kind === "todo"){
+          var nt = dat(val.title, val.date || "", val.time || ""); if (val.dtype) nt.type = val.dtype;
+          s.todos.push(nt);
         } else if (kind === "event"){
           if (!val.date) return warn();
           (s.events = s.events || []).push({ id: uid(), title: val.title, date: val.date, time: val.time || "", endTime: val.endTime || "",

@@ -180,14 +180,21 @@ test('stamps: changing a class time\'s days is an edit to that class time', () =
 
 /* ---------------------------------------------------------------- upgrading older data */
 
-test('upgrading a version 1 workspace adds type, contact and events and loses nothing', () => {
+test('upgrading an old workspace adds type, contact and events, folds deadlines into to-dos, and loses nothing', () => {
   const data = read('workspace-v1.json');
   assert.equal(Standard.migrate(data), true);
   const [decision, club] = data.academics.subjects;
-  assert.deepEqual([data.schemaVersion, decision.type, decision.contact, decision.events], [2, 'Course', 'Prof. Reed', []]);   // has class times: a course
+  assert.deepEqual([data.schemaVersion, decision.type, decision.contact, decision.events], [3, 'Course', 'Prof. Reed', []]);   // has class times: a course
   assert.deepEqual([club.type, club.contact], ['', 'President - Ishitha']);                                                      // can't tell: left for you
   assert.ok(!('professor' in decision) && !('professor' in club));
   assert.equal(decision.todos[0].text, 'Read ch 4');
+  assert.deepEqual(decision.deadlines, []);
+  const [assignment, quiz] = decision.todos.slice(1);
+  assert.deepEqual([assignment.id, assignment.text, assignment.type, assignment.date, assignment.time, assignment.done, assignment.status],
+    ['vd1', 'Assignment 4', 'Assignment', '2026-11-12', '23:59', false, 'In progress']);          // nothing about it is lost
+  assert.deepEqual([quiz.text, quiz.done, 'status' in quiz], ['Quiz 1', true, false]);              // "Done" is now just ticked
+  const items = Standard.standardItems(data, { today: TODAY }).filter((i) => i.id === 'vd1');
+  assert.deepEqual([items[0].kind, items[0].extra.type, items[0].dueCounts], ['academics.todo', 'Assignment', true]);
   assert.equal(decision.schedule[0].location, 'Olin');
 });
 
@@ -198,6 +205,7 @@ test('upgrading is safe to repeat and leaves current data untouched', () => {
   assert.equal(Standard.migrate(data), false);
   assert.equal(JSON.stringify(data), once);
   const current = workspace();
+  Standard.migrate(current);
   const copy = JSON.stringify(current);
   assert.equal(Standard.migrate(current), false);
   assert.equal(JSON.stringify(current), copy);
@@ -216,4 +224,11 @@ test('missing, older or damaged data never throws', () => {
   assert.equal(Standard.isIsoDate('2026-02-30'), false);
   assert.equal(Standard.normalizeClock('8:40'), '08:40');
   assert.equal(Standard.normalizeClock('25:00'), '');
+});
+
+test('a deadline merged in from an older copy is not duplicated when it was already moved to a to-do', () => {
+  const data = { academics: { subjects: [{ id: 's', name: 'S', todos: [{ id: 'd1', text: 'Exam', done: false }], deadlines: [{ id: 'd1', title: 'Exam', status: 'Not started' }] }] } };
+  Standard.migrate(data);
+  assert.equal(data.academics.subjects[0].todos.length, 1);
+  assert.deepEqual(data.academics.subjects[0].deadlines, []);
 });

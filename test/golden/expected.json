@@ -1031,6 +1031,23 @@
               "id": "vt1",
               "text": "Read ch 4",
               "done": false
+            },
+            {
+              "id": "vd1",
+              "type": "Assignment",
+              "date": "2026-11-12",
+              "time": "23:59",
+              "text": "Assignment 4",
+              "done": false,
+              "status": "In progress"
+            },
+            {
+              "id": "vd2",
+              "type": "Quiz",
+              "date": "2026-10-20",
+              "time": "",
+              "text": "Quiz 1",
+              "done": true
             }
           ],
           "milestones": [],
@@ -1084,6 +1101,6 @@
       "social": [],
       "tasks": []
     },
-    "schemaVersion": 2
+    "schemaVersion": 3
   }
 }
